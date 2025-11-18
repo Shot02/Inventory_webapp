@@ -682,6 +682,14 @@ async function processSale() {
     const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
     const grandTotal = parseFloat(document.getElementById('grandTotal').textContent.replace('₦', '').replace(',', '')) || 0;
     
+    // NEW: Check if this cart was loaded from a saved cart
+    const cartToLoad = sessionStorage.getItem('cartToLoad');
+    let savedCartId = null;
+    if (cartToLoad) {
+        const cartData = JSON.parse(cartToLoad);
+        savedCartId = cartData.saved_cart_id || null;
+    }
+    
     // Validate based on payment type
     if (paymentType === 'installment') {
         // For installment: Name and phone are REQUIRED
@@ -757,13 +765,30 @@ async function processSale() {
                 customer_name: finalCustomerName,
                 customer_phone: finalCustomerPhone,
                 amount_paid: finalAmountPaid,
-                payment_method: paymentMethod
+                payment_method: paymentMethod,
+                saved_cart_id: savedCartId  // NEW: Pass the saved cart ID
             })
         });
         
         const result = await response.json();
         
         if (result.success) {
+            // Clear the local cart after successful sale
+            cart = [];
+            updateCart();
+            
+            // Clear customer information
+            document.getElementById('customerName').value = '';
+            document.getElementById('customerPhone').value = '';
+            document.getElementById('amountPaid').value = '0';
+            
+            // Reset to full payment
+            selectPaymentType('full');
+            
+            // NEW: Clear the saved cart from session storage
+            sessionStorage.removeItem('cartToLoad');
+            
+            // Redirect to receipt
             window.location.href = `/receipt/${result.sale_id}/`;
         } else {
             console.log('Error: ' + result.error);

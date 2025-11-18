@@ -84,13 +84,12 @@ def process_sale(request):
             customer_phone = data.get('customer_phone', '').strip()
             amount_paid = Decimal(data.get('amount_paid', 0))
             payment_method = data.get('payment_method', 'cash')
+            saved_cart_id = data.get('saved_cart_id')  # NEW: Get saved cart ID if provided
             
             if not items:
                 return JsonResponse({'success': False, 'error': 'No items in cart'})
-            
 
             if amount_paid < Decimal(data.get('total_amount', 0)):
-
                 if not customer_name:
                     return JsonResponse({'success': False, 'error': 'Customer name is required for installment payment'})
                 
@@ -184,6 +183,24 @@ def process_sale(request):
                     payment_method=payment_method,
                     created_by=request.user
                 )
+            
+            # NEW: Clear pending cart after successful sale
+            try:
+                PendingCart.objects.filter(staff=request.user).delete()
+                print(f"Pending cart cleared for user: {request.user.username}")
+            except Exception as e:
+                print(f"Error clearing pending cart: {e}")
+            
+            # NEW: Delete saved cart if this sale came from a saved cart
+            if saved_cart_id:
+                try:
+                    saved_cart = SavedCart.objects.filter(id=saved_cart_id, staff=request.user).first()
+                    if saved_cart:
+                        cart_name = saved_cart.cart_name
+                        saved_cart.delete()
+                        print(f"Saved cart '{cart_name}' (ID: {saved_cart_id}) deleted after successful sale")
+                except Exception as e:
+                    print(f"Error deleting saved cart: {e}")
             
             return JsonResponse({
                 'success': True,
