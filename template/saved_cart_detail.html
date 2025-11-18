@@ -61,15 +61,12 @@ async function loadCart(cartId) {
         const result = await response.json();
         
         if (result.success) {
-            // Store cart data in sessionStorage with the cart ID
             sessionStorage.setItem('cartToLoad', JSON.stringify({
                 data: result.cart_data,
                 name: result.cart_name,
-                saved_cart_id: cartId  // NEW: Store the cart ID for deletion
+                saved_cart_id: cartId
             }));
             window.location.href = "{% url 'home' %}";
-        } else {
-            console.log('Error loading cart: ' + result.error);
         }
     } catch (error) {
         console.log('Error loading cart: ' + error);

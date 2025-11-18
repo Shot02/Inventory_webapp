@@ -166,41 +166,35 @@ async function loadCart(cartId) {
         const result = await response.json();
         
         if (result.success) {
-            // Store cart data in sessionStorage with the cart ID
+            // Store cart data in sessionStorage and redirect to POS
             sessionStorage.setItem('cartToLoad', JSON.stringify({
                 data: result.cart_data,
                 name: result.cart_name,
-                saved_cart_id: cartId  // NEW: Store the cart ID for deletion
+                saved_cart_id: cartId
             }));
             window.location.href = "{% url 'home' %}";
-        } else {
-            console.log('Error loading cart: ' + result.error);
         }
     } catch (error) {
         console.log('Error loading cart: ' + error);
     }
 }
+
 async function deleteCart(cartId, cartName) {
-    if (confirm(`Are you sure you want to delete "${cartName}"?`)) {
-        try {
-            const response = await fetch(`/api/delete-saved-cart/${cartId}/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken')
-                }
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                console.log(result.message);
-                location.reload();
-            } else {
-                console.log('Error deleting cart: ' + result.error);
+    try {
+        const response = await fetch(`/api/delete-saved-cart/${cartId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
             }
-        } catch (error) {
-            console.log('Error deleting cart: ' + error);
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            location.reload();
         }
+    } catch (error) {
+        console.log('Error deleting cart: ' + error);
     }
 }
 

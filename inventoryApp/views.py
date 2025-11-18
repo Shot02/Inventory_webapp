@@ -73,7 +73,7 @@ def search_products(request):
         return JsonResponse(data, safe=False)
     return JsonResponse([], safe=False)
 
-# Process Sale
+# Process Sale - UPDATED: Fix saved cart deletion
 @login_required
 def process_sale(request):
     if request.method == 'POST':
@@ -84,7 +84,7 @@ def process_sale(request):
             customer_phone = data.get('customer_phone', '').strip()
             amount_paid = Decimal(data.get('amount_paid', 0))
             payment_method = data.get('payment_method', 'cash')
-            saved_cart_id = data.get('saved_cart_id')  # NEW: Get saved cart ID if provided
+            saved_cart_id = data.get('saved_cart_id')  # Get saved cart ID if provided
             
             if not items:
                 return JsonResponse({'success': False, 'error': 'No items in cart'})
@@ -99,6 +99,7 @@ def process_sale(request):
                 if not customer_name:
                     customer_name = 'Walk-in Customer'
 
+            # Validate products and stock
             for item in items:
                 try:
                     product = Product.objects.get(id=item['product_id'])
@@ -148,6 +149,7 @@ def process_sale(request):
                 payment_status=payment_status
             )
             
+            # Create sale items and update stock
             for item in items:
                 product = Product.objects.get(id=item['product_id'])
                 
@@ -184,21 +186,21 @@ def process_sale(request):
                     created_by=request.user
                 )
             
-            # NEW: Clear pending cart after successful sale
+            # Clear pending cart after successful sale
             try:
                 PendingCart.objects.filter(staff=request.user).delete()
-                print(f"Pending cart cleared for user: {request.user.username}")
             except Exception as e:
                 print(f"Error clearing pending cart: {e}")
             
-            # NEW: Delete saved cart if this sale came from a saved cart
+            # DELETE SAVED CART if this sale came from a saved cart
             if saved_cart_id:
                 try:
-                    saved_cart = SavedCart.objects.filter(id=saved_cart_id, staff=request.user).first()
-                    if saved_cart:
-                        cart_name = saved_cart.cart_name
-                        saved_cart.delete()
-                        print(f"Saved cart '{cart_name}' (ID: {saved_cart_id}) deleted after successful sale")
+                    # Delete the saved cart from database
+                    deleted_count = SavedCart.objects.filter(id=saved_cart_id, staff=request.user).delete()
+                    if deleted_count[0] > 0:
+                        print(f"Saved cart ID {saved_cart_id} deleted successfully after sale")
+                    else:
+                        print(f"Saved cart ID {saved_cart_id} not found or already deleted")
                 except Exception as e:
                     print(f"Error deleting saved cart: {e}")
             
@@ -259,7 +261,7 @@ def admin_dashboard(request):
     total_revenue = sales_in_period.aggregate(Sum('total'))['total__sum'] or 0
     debtors_count = sales_in_period.filter(balance__gt=0).count()
     
-    # NEW: Payment method statistics
+    # Payment method statistics
     payments_in_period = Payment.objects.filter(
         created_at__date__gte=start_date,
         created_at__date__lte=end_date
@@ -283,11 +285,9 @@ def admin_dashboard(request):
         'debtors_count': debtors_count,
         'recent_sales': recent_sales,
         'low_stock': low_stock,
-        # NEW: Payment statistics
         'cash_payments': cash_payments,
         'transfer_payments': transfer_payments,
         'card_payments': card_payments,
-        # Date filter context
         'date_filter': date_filter,
         'start_date': start_date,
         'end_date': end_date,
@@ -362,7 +362,7 @@ def delete_product(request, pk):
         return redirect('product_list')
     return render(request, 'product_confirm_delete.html', {'product': product})
 
-# Debtor Management - NOW ACCESSIBLE TO STAFF
+# Debtor Management
 @login_required
 @user_passes_test(is_staff_or_admin)
 def debtors_list(request):
@@ -420,13 +420,13 @@ def record_payment(request, sale_id):
                 })
             else:
                 messages.success(request, f'Payment of ₦{payment.amount} recorded successfully!')
-                return redirect('debtors_list')
+                return redirect('view_receipt', sale_id=sale.id)
     else:
         form = PaymentForm()
     
     return render(request, 'record_payment.html', {'form': form, 'sale': sale})
 
-# New: Payment History View
+# Payment History View
 @login_required
 @user_passes_test(is_staff_or_admin)
 def debtor_payment_history(request, sale_id):
@@ -445,7 +445,7 @@ def view_receipt(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)
     return render(request, 'receipt.html', {'sale': sale})
 
-# New: Edit Receipt View
+# Edit Receipt View
 @login_required
 def edit_receipt(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)

@@ -216,10 +216,48 @@
         gap: 1rem;
         align-items: end;
     }
+
+    /* Save Cart Modal Styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .modal-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 400px;
+        max-width: 90%;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+
+<!-- Save Cart Modal -->
+<div id="saveCartModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="margin-bottom: 1rem;">Save Cart</h3>
+        <div class="form-group">
+            <label>Cart Name</label>
+            <input type="text" id="cartNameInput" class="form-control" 
+                   placeholder="Enter cart name" value="Cart from {{ now|date:'M d, Y H:i' }}">
+        </div>
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+            <button onclick="saveCart()" class="btn btn-success" style="flex: 1;">Save</button>
+            <button onclick="closeSaveCartModal()" class="btn btn-danger">Cancel</button>
+        </div>
+    </div>
+</div>
 
 <div class="pos-container">
     <div class="left-panel">
@@ -350,7 +388,7 @@
             
             <!-- Saved Cart Buttons -->
             <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                <button onclick="saveCartWithName()" class="btn btn-warning" style="flex: 1;">
+                <button onclick="openSaveCartModal()" class="btn btn-warning" style="flex: 1;">
                      Save Cart
                 </button>
                 <a href="{% url 'saved_carts_list' %}" class="btn btn-info" style="flex: 1;">
@@ -374,9 +412,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const cartToLoad = sessionStorage.getItem('cartToLoad');
     if (cartToLoad && cart.length === 0) {
         const cartData = JSON.parse(cartToLoad);
-        if (confirm(`Load saved cart "${cartData.name}"?`)) {
-            loadCartData(cartData.data);
-        }
+        loadCartData(cartData.data);
         sessionStorage.removeItem('cartToLoad');
     }
 });
@@ -440,7 +476,6 @@ async function searchProducts(query) {
 function addToCart(product) {
     // Check if product is out of stock
     if (product.quantity === 0) {
-        console.log(product.name + ' is OUT OF STOCK!');
         return;
     }
     
@@ -450,7 +485,6 @@ function addToCart(product) {
         if (existing.quantity < product.quantity) {
             existing.quantity++;
         } else {
-            console.log('Not enough stock available! Only ' + product.quantity + ' items in stock.');
             return;
         }
     } else {
@@ -531,7 +565,6 @@ function updateQuantity(index, change) {
     }
     
     if (newQty > item.max_quantity) {
-        console.log('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
         return;
     }
     
@@ -544,13 +577,11 @@ function setQuantity(index, value) {
     const item = cart[index];
     
     if (isNaN(qty) || qty < 1) {
-        console.log('Invalid quantity!');
         updateCart();
         return;
     }
     
     if (qty > item.max_quantity) {
-        console.log('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
         updateCart();
         return;
     }
@@ -562,7 +593,6 @@ function setQuantity(index, value) {
 function setDiscount(index, value) {
     const discount = parseFloat(value) || 0;
     if (discount < 0) {
-        console.log('Discount cannot be negative!');
         updateCart();
         return;
     }
@@ -571,22 +601,18 @@ function setDiscount(index, value) {
 }
 
 function removeFromCart(index) {
-    if (confirm('Remove this item from cart?')) {
-        cart.splice(index, 1);
-        updateCart();
-    }
+    cart.splice(index, 1);
+    updateCart();
 }
 
 function clearCart() {
-    if (confirm('Clear all items from cart?')) {
-        cart = [];
-        updateCart();
-        document.getElementById('customerName').value = '';
-        document.getElementById('customerPhone').value = '';
-        document.getElementById('amountPaid').value = '0';
-        // Reset to full payment
-        selectPaymentType('full');
-    }
+    cart = [];
+    updateCart();
+    document.getElementById('customerName').value = '';
+    document.getElementById('customerPhone').value = '';
+    document.getElementById('amountPaid').value = '0';
+    // Reset to full payment
+    selectPaymentType('full');
 }
 
 function updateTotals() {
@@ -668,10 +694,9 @@ function selectPaymentMethod(method, event = null) {
     document.querySelector(`input[value="${method}"]`).checked = true;
 }
 
-// UPDATED: processSale function with proper payment type validation
+// UPDATED: processSale function with saved cart deletion
 async function processSale() {
     if (cart.length === 0) {
-        console.log('Cart is empty!');
         return;
     }
     
@@ -694,26 +719,22 @@ async function processSale() {
     if (paymentType === 'installment') {
         // For installment: Name and phone are REQUIRED
         if (!customerName) {
-            console.log('Customer name is required for installment payment!');
             document.getElementById('customerName').focus();
             return;
         }
         
         if (!customerPhone) {
-            console.log('Customer phone is required for installment payment!');
             document.getElementById('customerPhone').focus();
             return;
         }
         
         // Validate installment amount
         if (amountPaid <= 0) {
-            console.log('Please enter the installment amount!');
             document.getElementById('amountPaid').focus();
             return;
         }
         
         if (amountPaid >= grandTotal) {
-            console.log('Installment amount should be less than total amount!');
             document.getElementById('amountPaid').focus();
             return;
         }
@@ -732,12 +753,10 @@ async function processSale() {
     const finalAmountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
     
     if (finalAmountPaid < 0) {
-        console.log('Amount paid cannot be negative!');
         return;
     }
     
     if (finalAmountPaid > grandTotal) {
-        console.log('Amount paid cannot exceed grand total!');
         return;
     }
     
@@ -766,7 +785,7 @@ async function processSale() {
                 customer_phone: finalCustomerPhone,
                 amount_paid: finalAmountPaid,
                 payment_method: paymentMethod,
-                saved_cart_id: savedCartId  // NEW: Pass the saved cart ID
+                saved_cart_id: savedCartId  // Pass the saved cart ID for deletion
             })
         });
         
@@ -790,25 +809,32 @@ async function processSale() {
             
             // Redirect to receipt
             window.location.href = `/receipt/${result.sale_id}/`;
-        } else {
-            console.log('Error: ' + result.error);
         }
     } catch (error) {
         console.log('Error processing sale: ' + error);
     }
 }
 
-// Save Cart with Name Prompt
-async function saveCartWithName() {
+// Save Cart Modal Functions
+function openSaveCartModal() {
     if (cart.length === 0) {
-        console.log('Cart is empty! Nothing to save.');
         return;
     }
+    document.getElementById('saveCartModal').style.display = 'flex';
+    // Set default cart name
+    const now = new Date();
+    document.getElementById('cartNameInput').value = `Cart from ${now.toLocaleString()}`;
+}
+
+function closeSaveCartModal() {
+    document.getElementById('saveCartModal').style.display = 'none';
+}
+
+async function saveCart() {
+    const cartName = document.getElementById('cartNameInput').value.trim();
     
-    const cartName = prompt('Enter a name for this cart:', `Cart from ${new Date().toLocaleString()}`);
-    
-    if (cartName === null) {
-        return; // User cancelled
+    if (!cartName) {
+        return;
     }
     
     const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
@@ -840,9 +866,7 @@ async function saveCartWithName() {
         const result = await response.json();
         
         if (result.success) {
-            console.log('Cart saved successfully!');
-        } else {
-            console.log('Error saving cart: ' + result.error);
+            closeSaveCartModal();
         }
     } catch (error) {
         console.log('Error saving cart: ' + error);
@@ -895,8 +919,6 @@ function loadCartData(cartData) {
     if (cartData.amount_paid) {
         document.getElementById('amountPaid').value = cartData.amount_paid;
     }
-    
-    console.log('Cart loaded successfully!');
 }
 
 function getCookie(name) {
@@ -913,6 +935,13 @@ function getCookie(name) {
     }
     return cookieValue;
 }
+
+// Close modal when clicking outside
+document.getElementById('saveCartModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeSaveCartModal();
+    }
+});
 
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.search-box')) {

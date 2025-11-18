@@ -75,16 +75,14 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Redirect to debtors list on success
-                window.location.href = "{% url 'debtors_list' %}";
+                // Redirect to receipt view after successful payment
+                window.location.href = "{% url 'view_receipt' sale.id %}";
             } else {
-                console.log('Error: ' + data.error);
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = 'Record Payment';
             }
         })
         .catch(error => {
-            console.log('Error processing payment: ' + error);
             submitBtn.disabled = false;
             submitBtn.innerHTML = 'Record Payment';
         });
