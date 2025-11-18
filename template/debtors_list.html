@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+
+{% block title %}Debtors{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-container {
+        background: #fff;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    .search-input:focus {
+        border-color: #4f46e5;
+        outline: none;
+    }
+
+    .debtor-row.hidden {
+        display: none;
+    }
+
+    .no-results {
+        display: none;
+        text-align: center;
+        padding: 1.5rem;
+        color: #888;
+    }
+    .no-results.show {
+        display: table-row;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 2rem;"> Debtors & Payment Records</h1>
+
+<!-- Search Bar -->
+<div class="search-container">
+    <input id="debtorSearchInput"
+           type="text"
+           class="search-input"
+           placeholder="Search by customer name, phone, or invoice number..."
+           autofocus>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Invoice</th>
+                <th>Customer</th>
+                <th>Phone</th>
+                <th>Total Amount</th>
+                <th>Paid</th>
+                <th>Balance</th>
+                <th>Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="debtorTableBody">
+            {% for sale in debtors %}
+            <tr class="debtor-row"
+                data-name="{{ sale.customer_name|default:'walk-in'|lower }}"
+                data-phone="{{ sale.customer_phone|default:''|lower }}"
+                data-invoice="{{ sale.invoice_number|lower }}">
+
+                <td><strong>{{ sale.invoice_number }}</strong></td>
+                <td>{{ sale.customer_name|default:"Walk-in" }}</td>
+                <td>{{ sale.customer_phone|default:"-" }}</td>
+                <td>₦{{ sale.total|floatformat:2 }}</td>
+                <td>₦{{ sale.amount_paid|floatformat:2 }}</td>
+                <td><strong style="color: #dc3545;">₦{{ sale.balance|floatformat:2 }}</strong></td>
+                <td>{{ sale.created_at|date:"M d, Y" }}</td>
+                <td>
+                    <a href="{% url 'record_payment' sale.id %}" class="btn btn-success" style="padding: 0.4rem 0.8rem;">
+                         Record Payment
+                    </a>
+                    <a href="{% url 'view_receipt' sale.id %}" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
+                        📄 View
+                    </a>
+                </td>
+            </tr>
+            
+            {% if sale.payments.all %}
+            <tr class="debtor-row payment-history"
+                data-name="{{ sale.customer_name|default:'walk-in'|lower }}"
+                data-phone="{{ sale.customer_phone|default:''|lower }}"
+                data-invoice="{{ sale.invoice_number|lower }}"
+                style="background: #f8f9fa;">
+                <td colspan="8" style="padding-left: 3rem;">
+                    <strong>Payment History:</strong><br>
+                    {% for payment in sale.payments.all %}
+                    <small>
+                        {{ payment.created_at|date:"M d, Y H:i" }} - 
+                        ₦{{ payment.amount|floatformat:2 }} 
+                        ({{ payment.payment_method|title }})
+                        {% if payment.reference %}- Ref: {{ payment.reference }}{% endif %}
+                    </small><br>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endif %}
+            {% empty %}
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 2rem;">
+                    No outstanding debts! 
+                </td>
+            </tr>
+            {% endfor %}
+
+            <tr id="noResultsRow" class="no-results">
+                <td colspan="8">🔍 No matching debtors found.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('debtorSearchInput');
+    const rows = document.querySelectorAll('.debtor-row');
+    const noResults = document.getElementById('noResultsRow');
+
+    searchInput.addEventListener('input', () => {
+        const term = searchInput.value.toLowerCase().trim();
+        let visible = 0;
+
+        rows.forEach(row => {
+            const matches =
+                row.dataset.name.startsWith(term) ||
+                row.dataset.phone.startsWith(term) ||
+                row.dataset.invoice.startsWith(term);
+
+            if (matches) {
+                row.classList.remove('hidden');
+                visible++;
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+
+        noResults.classList.toggle('show', visible === 0 && term !== "");
+    });
+
+    // Clear search with ESC
+    searchInput.addEventListener('keydown', e => {
+        if (e.key === "Escape") {
+            searchInput.value = "";
+            searchInput.dispatchEvent(new Event("input"));
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+
+{% block title %}Products{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-container {
+        background: #fff;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    .search-input:focus {
+        border-color: #4f46e5;
+        outline: none;
+    }
+
+    .product-row.hidden {
+        display: none;
+    }
+
+    .badge {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        border-radius: 8px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger  { background: #fee2e2; color: #b91c1c; }
+
+    .no-results {
+        display: none;
+        text-align: center;
+        padding: 1.5rem;
+        color: #888;
+    }
+    .no-results.show {
+        display: table-row;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4"  style="display: flex; justify-content: space-between;align-items: center; margin-bottom: 2rem; width: 100%;"> 
+    <h1>Product List</h1>
+    <a href="{% url 'add_product' %}" class="btn btn-primary">Add Product</a>
+</div>
+
+<!-- Search Bar -->
+<div class="search-container">
+    <input id="productSearchInput"
+           type="text"
+           class="search-input"
+           placeholder="Search by name, SKU, or category..."
+           autofocus>
+</div>
+
+<div class="card p-3">
+    <table id="productTable" class="table">
+        <thead>
+            <tr>
+                <th>Image</th>
+                <th>Name</th>
+                <th>SKU</th>
+                <th>Category</th>
+                <th>Price</th>
+                <th>Cost</th>
+                <th>Stock</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+
+        <tbody id="productTableBody">
+            {% for product in products %}
+            <tr class="product-row"
+                data-name="{{ product.name|lower }}"
+                data-sku="{{ product.sku|lower }}"
+                data-category="{{ product.category.name|default:'n/a'|lower }}">
+
+                <td>
+                    {% if product.image %}
+                        <img src="{{ product.image.url }}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;">
+                    {% else %}
+                        <div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px;">
+                            none
+                        </div>
+                    {% endif %}
+                </td>
+
+                <td><strong>{{ product.name }}</strong></td>
+                <td><code>{{ product.sku }}</code></td>
+                <td>{{ product.category.name|default:"N/A" }}</td>
+                <td>₦{{ product.price|floatformat:2 }}</td>
+                <td>₦{{ product.cost_price|floatformat:2 }}</td>
+                <td>{{ product.quantity }}</td>
+
+                <td>
+                    {% if product.quantity == 0 %}
+                        <span class="badge badge-danger">Out</span>
+                    {% elif product.is_low_stock %}
+                        <span class="badge badge-warning">Low</span>
+                    {% else %}
+                        <span class="badge badge-success">In</span>
+                    {% endif %}
+                </td>
+
+                <td style="white-space: nowrap;">
+                    <a href="{% url 'edit_product' product.id %}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{% url 'delete_product' product.id %}" 
+                       class="btn btn-sm btn-danger"
+                       onclick="return confirm('Delete {{ product.name }}?')">
+                       Delete
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="9" class="text-center py-4">
+                        📭 No products yet. Click "Add Product" to begin.
+                    </td>
+                </tr>
+            {% endfor %}
+
+            <tr id="noResultsRow" class="no-results">
+                <td colspan="9">🔍 No matching products.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('productSearchInput');
+    const rows = document.querySelectorAll('.product-row');
+    const noResults = document.getElementById('noResultsRow');
+
+    searchInput.addEventListener('input', () => {
+        const term = searchInput.value.toLowerCase().trim();
+        let visible = 0;
+
+        rows.forEach(row => {
+            const matches =
+                row.dataset.name.includes(term) ||
+                row.dataset.sku.includes(term) ||
+                row.dataset.category.includes(term);
+
+            if (matches) {
+                row.classList.remove('hidden');
+                visible++;
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+
+        noResults.classList.toggle('show', visible === 0 && term !== "");
+    });
+
+    // Clear search with ESC
+    searchInput.addEventListener('keydown', e => {
+        if (e.key === "Escape") {
+            searchInput.value = "";
+            searchInput.dispatchEvent(new Event("input"));
+        }
+    });
+});
+</script>
+
+{% endblock %}

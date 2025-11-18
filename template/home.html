@@ -1,0 +1,898 @@
+{% extends 'base.html' %}
+
+{% block title %}Point of Sale{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pos-container {
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 1.5rem;
+    }
+    
+    .search-section {
+        margin-bottom: 1.5rem;
+    }
+    
+    .search-box {
+        position: relative;
+    }
+    
+    .search-box input {
+        font-size: 1.1rem;
+        padding: 1rem;
+    }
+    
+    .search-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 2px solid #667eea;
+        border-top: none;
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 100;
+        display: none;
+    }
+    
+    .search-result-item {
+        padding: 1rem;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .search-result-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .search-result-item img {
+        width: 50px;
+        height: 50px;
+        object-fit: cover;
+        border-radius: 6px;
+    }
+    
+    .search-result-item.out-of-stock {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: #ffebee;
+    }
+    
+    .cart-table img {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 6px;
+    }
+    
+    .cart-summary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-top: 1rem;
+    }
+    
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        font-size: 1.1rem;
+    }
+    
+    .summary-row.total {
+        font-size: 1.5rem;
+        font-weight: bold;
+        border-top: 2px solid rgba(255,255,255,0.3);
+        padding-top: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    
+    .quantity-control {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .quantity-control button {
+        width: 30px;
+        height: 30px;
+        border: none;
+        background: #667eea;
+        color: white;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .quantity-control input {
+        width: 60px;
+        text-align: center;
+        padding: 0.3rem;
+    }
+    
+    .stock-badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .stock-badge.in-stock {
+        background: #c6f6d5;
+        color: #22543d;
+    }
+    
+    .stock-badge.low-stock {
+        background: #fef08a;
+        color: #713f12;
+    }
+    
+    .stock-badge.out-of-stock {
+        background: #fed7d7;
+        color: #742a2a;
+    }
+    
+    .required-field::after {
+        content: " *";
+        color: #dc3545;
+    }
+    
+    .payment-type-options {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .payment-type-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+    }
+    
+    .payment-type-option:hover {
+        background: #e9ecef;
+    }
+    
+    .payment-type-option.active {
+        background: #48bb78;
+        color: white;
+        border-color: #48bb78;
+    }
+    
+    .payment-type-option input {
+        margin: 0;
+    }
+    
+    .payment-methods {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .payment-method-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .payment-method-option:hover {
+        background: #e9ecef;
+    }
+    
+    .payment-method-option.active {
+        background: #667eea;
+        color: white;
+        border-color: #667eea;
+    }
+    
+    .payment-method-option input {
+        margin: 0;
+    }
+    
+    .amount-paid-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        align-items: end;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="pos-container">
+    <div class="left-panel">
+        <div class="card">
+            <div class="card-header">
+                <h2> Point of Sale</h2>
+            </div>
+            
+            <div class="search-section">
+                <div class="search-box">
+                    <input type="text" id="productSearch" class="form-control" 
+                           placeholder=" Search product by name..." autofocus>
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+            </div>
+            
+            <div id="cartSection">
+                <table class="cart-table">
+                    <thead>
+                        <tr>
+                            <th>Image</th>
+                            <th>Product</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Stock Status</th>
+                            <th>Discount</th>
+                            <th>Total</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartItems">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 2rem;">
+                                <p style="color: #999;">Cart is empty. Search for products to add.</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="right-panel">
+        <div class="card">
+            <div class="card-header">
+                <h2> Checkout</h2>
+            </div>
+            
+            <!-- Payment Type Selection -->
+            <div class="form-group">
+                <label>Payment Type</label>
+                <div class="payment-type-options">
+                    <label class="payment-type-option active" onclick="selectPaymentType('full', event)">
+                        <input type="radio" name="paymentType" value="full" checked> 
+                        Full Payment
+                    </label>
+                    <label class="payment-type-option" onclick="selectPaymentType('installment', event)">
+                        <input type="radio" name="paymentType" value="installment">
+                        Installment Payment
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Customer Information (Hidden for full payment by default) -->
+            <div id="customerInfoSection" style="display: none;">
+                <div class="form-group">
+                    <label class="required-field">Customer Name *</label>
+                    <input type="text" id="customerName" class="form-control">
+                </div>
+                
+                <div class="form-group">
+                    <label class="required-field">Customer Phone *</label>
+                    <input type="tel" id="customerPhone" class="form-control">
+                </div>
+            </div>
+            
+            <div class="cart-summary">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span id="subtotal">₦0.00</span>
+                </div>
+                <div class="summary-row">
+                    <span>Discount:</span>
+                    <span id="totalDiscount">₦0.00</span>
+                </div>
+                <div class="summary-row total">
+                    <span>GRAND TOTAL:</span>
+                    <span id="grandTotal">₦0.00</span>
+                </div>
+            </div>
+            
+            <!-- Payment Method -->
+            <div class="form-group">
+                <label>Payment Method</label>
+                <div class="payment-methods">
+                    <label class="payment-method-option active" onclick="selectPaymentMethod('cash', event)">
+                        <input type="radio" name="paymentMethod" value="cash" checked> 
+                        Cash
+                    </label>
+                    <label class="payment-method-option" onclick="selectPaymentMethod('transfer', event)">
+                        <input type="radio" name="paymentMethod" value="transfer">
+                        Transfer
+                    </label>
+                    <label class="payment-method-option" onclick="selectPaymentMethod('card', event)">
+                        <input type="radio" name="paymentMethod" value="card">
+                        Card
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Amount Paid -->
+            <div class="amount-paid-section">
+                <div class="form-group">
+                    <label>Amount Paid</label>
+                    <input type="number" id="amountPaid" class="form-control" step="0.01" min="0">
+                </div>
+            </div>
+            
+            <!-- Main Action Buttons -->
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button onclick="processSale()" class="btn btn-success" style="flex: 1;">
+                     Complete Sale
+                </button>
+                <button onclick="clearCart()" class="btn btn-danger">
+                     Clear
+                </button>
+            </div>
+            
+            <!-- Saved Cart Buttons -->
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button onclick="saveCartWithName()" class="btn btn-warning" style="flex: 1;">
+                     Save Cart
+                </button>
+                <a href="{% url 'saved_carts_list' %}" class="btn btn-info" style="flex: 1;">
+                    Saved Carts
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let cart = [];
+let searchTimeout;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Set default amount paid to 0, will be updated when cart has items
+    document.getElementById('amountPaid').value = '0';
+    
+    // Check for cart to load from sessionStorage
+    const cartToLoad = sessionStorage.getItem('cartToLoad');
+    if (cartToLoad && cart.length === 0) {
+        const cartData = JSON.parse(cartToLoad);
+        if (confirm(`Load saved cart "${cartData.name}"?`)) {
+            loadCartData(cartData.data);
+        }
+        sessionStorage.removeItem('cartToLoad');
+    }
+});
+
+document.getElementById('productSearch').addEventListener('keyup', function(e) {
+    if (e.key === 'Enter' && this.value.trim()) {
+        searchProducts(this.value.trim());
+    } else {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            if (this.value.trim()) {
+                searchProducts(this.value.trim());
+            } else {
+                document.getElementById('searchResults').style.display = 'none';
+            }
+        }, 300);
+    }
+});
+
+function getStockBadge(quantity) {
+    if (quantity === 0) {
+        return '<span class="stock-badge out-of-stock">OUT OF STOCK</span>';
+    } else if (quantity <= 10) {
+        return '<span class="stock-badge low-stock">LOW STOCK (' + quantity + ')</span>';
+    } else {
+        return '<span class="stock-badge in-stock">IN STOCK (' + quantity + ')</span>';
+    }
+}
+
+async function searchProducts(query) {
+    const response = await fetch(`/api/search-products/?q=${encodeURIComponent(query)}`);
+    const products = await response.json();
+    
+    const resultsDiv = document.getElementById('searchResults');
+    
+    if (products.length === 0) {
+        resultsDiv.innerHTML = '<div style="padding: 1rem; text-align: center;">No products found</div>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+    
+    resultsDiv.innerHTML = products.map(p => {
+        const isOutOfStock = p.quantity === 0;
+        const className = isOutOfStock ? 'search-result-item out-of-stock' : 'search-result-item';
+        const onclick = isOutOfStock ? '' : `onclick='addToCart(${JSON.stringify(p)})'`;
+        
+        return `
+            <div class="${className}" ${onclick}>
+                <img src="${p.image || '/static/placeholder.png'}" alt="${p.name}">
+                <div style="flex: 1;">
+                    <strong>${p.name}</strong><br>
+                    <small>Price: ₦${p.price} | ${getStockBadge(p.quantity)}</small>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    resultsDiv.style.display = 'block';
+}
+
+function addToCart(product) {
+    // Check if product is out of stock
+    if (product.quantity === 0) {
+        alert(product.name + ' is OUT OF STOCK!');
+        return;
+    }
+    
+    const existing = cart.find(item => item.product_id === product.id);
+    
+    if (existing) {
+        if (existing.quantity < product.quantity) {
+            existing.quantity++;
+        } else {
+            alert('Not enough stock available! Only ' + product.quantity + ' items in stock.');
+            return;
+        }
+    } else {
+        cart.push({
+            product_id: product.id,
+            name: product.name,
+            price: parseFloat(product.price),
+            quantity: 1,
+            discount: 0,
+            image: product.image,
+            max_quantity: product.quantity
+        });
+    }
+    
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('productSearch').value = '';
+    updateCart();
+}
+
+function updateCart() {
+    const tbody = document.getElementById('cartItems');
+    
+    if (cart.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 2rem;">
+                    <p style="color: #999;">Cart is empty. Search for products to add.</p>
+                </td>
+            </tr>
+        `;
+        updateTotals();
+        return;
+    }
+    
+    tbody.innerHTML = cart.map((item, index) => {
+        const total = (item.price * item.quantity) - item.discount;
+        return `
+            <tr>
+                <td><img src="${item.image || '/static/placeholder.png'}" alt="${item.name}"></td>
+                <td>
+                    <strong>${item.name}</strong>
+                </td>
+                <td>₦${item.price.toFixed(2)}</td>
+                <td>
+                    <div class="quantity-control">
+                        <button onclick="updateQuantity(${index}, -1)">-</button>
+                        <input type="number" value="${item.quantity}" min="1" max="${item.max_quantity}"
+                               onchange="setQuantity(${index}, this.value)">
+                        <button onclick="updateQuantity(${index}, 1)">+</button>
+                    </div>
+                </td>
+                <td>${getStockBadge(item.max_quantity - item.quantity + item.quantity)}</td>
+                <td>
+                    <input type="number" value="${item.discount}" min="0" step="0.01"
+                           onchange="setDiscount(${index}, this.value)"
+                           style="width: 80px; padding: 0.3rem;">
+                </td>
+                <td><strong>₦${total.toFixed(2)}</strong></td>
+                <td>
+                    <button onclick="removeFromCart(${index})" class="btn btn-danger" style="padding: 0.3rem 0.6rem;">
+                        🗑️
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    updateTotals();
+}
+
+function updateQuantity(index, change) {
+    const item = cart[index];
+    const newQty = item.quantity + change;
+    
+    if (newQty < 1) {
+        removeFromCart(index);
+        return;
+    }
+    
+    if (newQty > item.max_quantity) {
+        alert('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
+        return;
+    }
+    
+    item.quantity = newQty;
+    updateCart();
+}
+
+function setQuantity(index, value) {
+    const qty = parseInt(value);
+    const item = cart[index];
+    
+    if (isNaN(qty) || qty < 1) {
+        alert('Invalid quantity!');
+        updateCart();
+        return;
+    }
+    
+    if (qty > item.max_quantity) {
+        alert('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
+        updateCart();
+        return;
+    }
+    
+    item.quantity = qty;
+    updateCart();
+}
+
+function setDiscount(index, value) {
+    const discount = parseFloat(value) || 0;
+    if (discount < 0) {
+        alert('Discount cannot be negative!');
+        updateCart();
+        return;
+    }
+    cart[index].discount = discount;
+    updateCart();
+}
+
+function removeFromCart(index) {
+    if (confirm('Remove this item from cart?')) {
+        cart.splice(index, 1);
+        updateCart();
+    }
+}
+
+function clearCart() {
+    if (confirm('Clear all items from cart?')) {
+        cart = [];
+        updateCart();
+        document.getElementById('customerName').value = '';
+        document.getElementById('customerPhone').value = '';
+        document.getElementById('amountPaid').value = '0';
+        // Reset to full payment
+        selectPaymentType('full');
+    }
+}
+
+function updateTotals() {
+    const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalDiscount = cart.reduce((sum, item) => sum + item.discount, 0);
+    const grandTotal = subtotal - totalDiscount;
+    
+    document.getElementById('subtotal').textContent = `₦${subtotal.toFixed(2)}`;
+    document.getElementById('totalDiscount').textContent = `₦${totalDiscount.toFixed(2)}`;
+    document.getElementById('grandTotal').textContent = `₦${grandTotal.toFixed(2)}`;
+    
+    // Auto-update amount paid for full payment
+    const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
+    if (paymentType === 'full' && cart.length > 0) {
+        document.getElementById('amountPaid').value = grandTotal.toFixed(2);
+    }
+}
+
+// Payment Type Selection
+function selectPaymentType(type, event = null) {
+    // Remove active class from all options
+    document.querySelectorAll('.payment-type-option').forEach(option => {
+        option.classList.remove('active');
+    });
+    
+    // Add active class to selected option
+    if (event) {
+        event.currentTarget.classList.add('active');
+    } else {
+        // If called programmatically (without event), find and activate the correct option
+        const targetOption = document.querySelector(`.payment-type-option input[value="${type}"]`).closest('.payment-type-option');
+        if (targetOption) {
+            targetOption.classList.add('active');
+        }
+    }
+    
+    // Update the radio button
+    document.querySelector(`input[name="paymentType"][value="${type}"]`).checked = true;
+    
+    // Show/hide customer info based on payment type
+    const customerInfoSection = document.getElementById('customerInfoSection');
+    const amountPaidInput = document.getElementById('amountPaid');
+    const grandTotal = parseFloat(document.getElementById('grandTotal').textContent.replace('₦', '').replace(',', '')) || 0;
+    
+    if (type === 'installment') {
+        customerInfoSection.style.display = 'block';
+        // For installment, set amount to 0 or keep current if it's less than total
+        if (parseFloat(amountPaidInput.value) >= grandTotal || amountPaidInput.value === '0') {
+            amountPaidInput.value = '0';
+        }
+    } else {
+        customerInfoSection.style.display = 'none';
+        // For full payment, auto-set amount to grand total
+        if (cart.length > 0) {
+            amountPaidInput.value = grandTotal.toFixed(2);
+        }
+    }
+}
+
+// Payment Method Selection
+function selectPaymentMethod(method, event = null) {
+    // Remove active class from all options
+    document.querySelectorAll('.payment-method-option').forEach(option => {
+        option.classList.remove('active');
+    });
+    
+    // Add active class to selected option
+    if (event) {
+        event.currentTarget.classList.add('active');
+    } else {
+        // If called programmatically (without event), find and activate the correct option
+        const targetOption = document.querySelector(`.payment-method-option input[value="${method}"]`).closest('.payment-method-option');
+        if (targetOption) {
+            targetOption.classList.add('active');
+        }
+    }
+    
+    // Update the radio button
+    document.querySelector(`input[value="${method}"]`).checked = true;
+}
+
+// UPDATED: processSale function with proper payment type validation
+async function processSale() {
+    if (cart.length === 0) {
+        alert('Cart is empty!');
+        return;
+    }
+    
+    const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
+    const customerName = document.getElementById('customerName').value.trim();
+    const customerPhone = document.getElementById('customerPhone').value.trim();
+    const amountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
+    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+    const grandTotal = parseFloat(document.getElementById('grandTotal').textContent.replace('₦', '').replace(',', '')) || 0;
+    
+    // Validate based on payment type
+    if (paymentType === 'installment') {
+        // For installment: Name and phone are REQUIRED
+        if (!customerName) {
+            alert('Customer name is required for installment payment!');
+            document.getElementById('customerName').focus();
+            return;
+        }
+        
+        if (!customerPhone) {
+            alert('Customer phone is required for installment payment!');
+            document.getElementById('customerPhone').focus();
+            return;
+        }
+        
+        // Validate installment amount
+        if (amountPaid <= 0) {
+            alert('Please enter the installment amount!');
+            document.getElementById('amountPaid').focus();
+            return;
+        }
+        
+        if (amountPaid >= grandTotal) {
+            alert('Installment amount should be less than total amount!');
+            document.getElementById('amountPaid').focus();
+            return;
+        }
+    } else {
+        // For full payment: Name and phone are OPTIONAL
+        // Use "Walk-in Customer" if no name provided
+        // No validation needed for name/phone
+        
+        // Auto-set amount paid to grand total if it's 0 or less than total
+        if (amountPaid === 0 || amountPaid < grandTotal) {
+            document.getElementById('amountPaid').value = grandTotal.toFixed(2);
+        }
+    }
+    
+    // Final validation for amount paid
+    const finalAmountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
+    
+    if (finalAmountPaid < 0) {
+        alert('Amount paid cannot be negative!');
+        return;
+    }
+    
+    if (finalAmountPaid > grandTotal) {
+        alert('Amount paid cannot exceed grand total!');
+        return;
+    }
+    
+    // Set final customer information
+    const finalCustomerName = paymentType === 'installment' ? customerName : (customerName || 'Walk-in Customer');
+    const finalCustomerPhone = paymentType === 'installment' ? customerPhone : (customerPhone || '');
+    
+    const items = cart.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        price: item.price,
+        discount: item.discount,
+        total: (item.price * item.quantity) - item.discount
+    }));
+    
+    try {
+        const response = await fetch('/api/process-sale/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                items: items,
+                customer_name: finalCustomerName,
+                customer_phone: finalCustomerPhone,
+                amount_paid: finalAmountPaid,
+                payment_method: paymentMethod
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            window.location.href = `/receipt/${result.sale_id}/`;
+        } else {
+            alert('Error: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error processing sale: ' + error);
+    }
+}
+
+// Save Cart with Name Prompt
+async function saveCartWithName() {
+    if (cart.length === 0) {
+        alert('Cart is empty! Nothing to save.');
+        return;
+    }
+    
+    const cartName = prompt('Enter a name for this cart:', `Cart from ${new Date().toLocaleString()}`);
+    
+    if (cartName === null) {
+        return; // User cancelled
+    }
+    
+    const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
+    const customerName = document.getElementById('customerName').value.trim();
+    const customerPhone = document.getElementById('customerPhone').value.trim();
+    const amountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
+    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+    
+    const cartData = {
+        cart_name: cartName,
+        items: cart,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        payment_type: paymentType,
+        payment_method: paymentMethod,
+        amount_paid: amountPaid
+    };
+    
+    try {
+        const response = await fetch('/api/save-cart/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(cartData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Cart saved successfully!');
+        } else {
+            alert('Error saving cart: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error saving cart: ' + error);
+    }
+}
+
+function loadCartData(cartData) {
+    // Clear current cart
+    cart = [];
+    
+    // Load saved items
+    if (cartData.items && cartData.items.length > 0) {
+        cart = cartData.items;
+        updateCart();
+    }
+    
+    // Load customer information
+    if (cartData.customer_name) {
+        document.getElementById('customerName').value = cartData.customer_name;
+    }
+    if (cartData.customer_phone) {
+        document.getElementById('customerPhone').value = cartData.customer_phone;
+    }
+    
+    // Load payment type
+    if (cartData.payment_type) {
+        selectPaymentType(cartData.payment_type);
+    }
+    
+    // Load payment method
+    if (cartData.payment_method) {
+        document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
+            radio.checked = false;
+        });
+        
+        const targetRadio = document.querySelector(`input[value="${cartData.payment_method}"]`);
+        if (targetRadio) {
+            targetRadio.checked = true;
+        }
+        
+        document.querySelectorAll('.payment-method-option').forEach(option => {
+            option.classList.remove('active');
+            if (option.querySelector('input').value === cartData.payment_method) {
+                option.classList.add('active');
+            }
+        });
+    }
+    
+    // Load amount paid
+    if (cartData.amount_paid) {
+        document.getElementById('amountPaid').value = cartData.amount_paid;
+    }
+    
+    alert('Cart loaded successfully!');
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.search-box')) {
+        document.getElementById('searchResults').style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,392 @@
+<!-- {% extends 'base.html' %}
+
+{% block title %}Products{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1> Product Management</h1>
+    <a href="{% url 'add_product' %}" class="btn btn-primary"> Add New Product</a>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Image</th>
+                <th>Product Name</th>
+                <th>SKU</th>
+                <th>Category</th>
+                <th>Price</th>
+                <th>Stock</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for product in products %}
+            <tr>
+                <td>
+                    <img src="{{ product.image.url|default:'/static/placeholder.png' }}" 
+                         style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px;">
+                </td>
+                <td><strong>{{ product.name }}</strong></td>
+                <td>{{ product.sku }}</td>
+                <td>{{ product.category.name|default:"N/A" }}</td>
+                <td>₦{{ product.price|floatformat:2 }}</td>
+                <td>{{ product.quantity }}</td>
+                <td>
+                    {% if product.is_low_stock %}
+                    <span class="badge badge-danger">Low Stock</span>
+                    {% else %}
+                    <span class="badge badge-success">In Stock</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'edit_product' product.id %}" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
+                         Edit
+                    </a>
+                    <a href="{% url 'delete_product' product.id %}" class="btn btn-danger" style="padding: 0.4rem 0.8rem;">
+                         Delete
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 2rem;">No products found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %} -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{% extends 'base.html' %}
+
+{% block title %}Products{% endblock %}
+
+{% block extra_css %}
+<style>
+    .badge {
+        display: inline-block;
+        padding: 0.3rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .badge-success {
+        background: #c6f6d5;
+        color: #22543d;
+    }
+    
+    .badge-danger {
+        background: #fed7d7;
+        color: #742a2a;
+    }
+    
+    .badge-warning {
+        background: #fef08a;
+        color: #713f12;
+    }
+    
+    .search-container {
+        background: white;
+        padding: 1rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+    }
+    
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        font-size: 1.1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        transition: border-color 0.3s;
+    }
+    
+    .search-input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+    
+    .product-row {
+        transition: background-color 0.2s;
+    }
+    
+    .product-row:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .product-row.hidden {
+        display: none;
+    }
+    
+    .no-results {
+        display: none;
+        text-align: center;
+        padding: 2rem;
+        color: #999;
+    }
+    
+    .no-results.show {
+        display: table-row;
+    }
+    
+    .stats-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        margin: 0.5rem 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1> Product Management</h1>
+    <a href="{% url 'add_product' %}" class="btn btn-primary">Add New Product</a>
+</div>
+
+
+
+<!-- Search Bar -->
+<div class="search-container">
+    <input type="text" 
+           id="productSearchInput" 
+           class="search-input" 
+           placeholder=" Search products by name, SKU, or category..." 
+           autofocus>
+</div>
+
+<div class="card">
+    <table id="productTable">
+        <thead>
+            <tr>
+                <th>Image</th>
+                <th>Product Name</th>
+                <th>SKU</th>
+                <th>Category</th>
+                <th>Price</th>
+                <th>Cost Price</th>
+                <th>Stock</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="productTableBody">
+            {% for product in products %}
+            <tr class="product-row" 
+                data-name="{{ product.name|lower }}" 
+                data-sku="{{ product.sku|lower }}" 
+                data-category="{{ product.category.name|default:'n/a'|lower }}"
+                data-stock="{{ product.quantity }}">
+                <td>
+                    <img src="{{ product.image.url|default:'/static/placeholder.png' }}" 
+                         style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px;"
+                         alt="{{ product.name }}">
+                </td>
+                <td><strong>{{ product.name }}</strong></td>
+                <td><code>{{ product.sku }}</code></td>
+                <td>{{ product.category.name|default:"N/A" }}</td>
+                <td><strong>₦{{ product.price|floatformat:2 }}</strong></td>
+                <td>₦{{ product.cost_price|floatformat:2 }}</td>
+                <td>
+                    <strong style="font-size: 1.1rem;">{{ product.quantity }}</strong>
+                </td>
+                <td>
+                    {% if product.quantity == 0 %}
+                    <span class="badge badge-danger">Out of Stock</span>
+                    {% elif product.is_low_stock %}
+                    <span class="badge badge-warning">Low Stock</span>
+                    {% else %}
+                    <span class="badge badge-success">In Stock</span>
+                    {% endif %}
+                </td>
+                <td style="white-space: nowrap;">
+                    <a href="{% url 'edit_product' product.id %}" 
+                       class="btn btn-primary" 
+                       style="padding: 0.4rem 0.8rem;">
+                        Edit
+                    </a>
+                    <a href="{% url 'delete_product' product.id %}" 
+                       class="btn btn-danger" 
+                       style="padding: 0.4rem 0.8rem;"
+                       onclick="return confirm('Are you sure you want to delete {{ product.name }}?')">
+                        Delete
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 2rem;">
+                     No products found. Click "Add New Product" to get started.
+                </td>
+            </tr>
+            {% endfor %}
+            <tr class="no-results" id="noResultsRow">
+                <td colspan="9">
+                 No products match your search. Try different keywords.
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+// Product search functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('productSearchInput');
+    const productRows = document.querySelectorAll('.product-row');
+    const noResultsRow = document.getElementById('noResultsRow');
+    
+    // Calculate initial statistics
+    updateStatistics();
+    
+    searchInput.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase().trim();
+        let visibleCount = 0;
+        
+        productRows.forEach(row => {
+            const name = row.getAttribute('data-name');
+            const sku = row.getAttribute('data-sku');
+            const category = row.getAttribute('data-category');
+            
+            // Check if search term matches name, SKU, or category
+            const matches = name.includes(searchTerm) || 
+                          sku.includes(searchTerm) || 
+                          category.includes(searchTerm);
+            
+            if (matches) {
+                row.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+        
+        // Show/hide "no results" message
+        if (visibleCount === 0 && searchTerm !== '') {
+            noResultsRow.classList.add('show');
+        } else {
+            noResultsRow.classList.remove('show');
+        }
+        
+        // Update statistics based on visible products
+        updateStatistics();
+    });
+    
+    // Clear search on Escape key
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            this.value = '';
+            this.dispatchEvent(new Event('input'));
+        }
+    });
+    
+    function updateStatistics() {
+        const visibleRows = document.querySelectorAll('.product-row:not(.hidden)');
+        let inStock = 0;
+        let lowStock = 0;
+        let outOfStock = 0;
+        
+        visibleRows.forEach(row => {
+            const stock = parseInt(row.getAttribute('data-stock'));
+            if (stock === 0) {
+                outOfStock++;
+            } else if (stock <= 10) {
+                lowStock++;
+            } else {
+                inStock++;
+            }
+        });
+        
+        document.getElementById('totalProducts').textContent = visibleRows.length;
+        document.getElementById('inStockCount').textContent = inStock;
+        document.getElementById('lowStockCount').textContent = lowStock;
+        document.getElementById('outOfStockCount').textContent = outOfStock;
+    }
+});
+
+// Add keyboard shortcut: Ctrl/Cmd + K to focus search
+document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.getElementById('productSearchInput').focus();
+    }
+});
+</script>
+
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

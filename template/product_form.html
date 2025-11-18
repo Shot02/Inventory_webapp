@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ action }} Product{% endblock %}
+
+{% block content %}
+<h1>{{ action }} Product</h1>
+
+<div class="card">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label>Product Name *</label>
+            {{ form.name }}
+        </div>
+        
+        <div class="form-group">
+            <label>SKU *</label>
+            {{ form.sku }}
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>Category</label>
+                {{ form.category }}
+                {{ form.new_category }}
+                <small style="color: #666;">Select existing or create new above</small>
+            </div>
+            
+            <div class="form-group">
+                <label>Supplier</label>
+                {{ form.supplier }}
+                {{ form.new_supplier }}
+                <small style="color: #666;">Select existing or create new above</small>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>Description</label>
+            {{ form.description }}
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>Selling Price *</label>
+                {{ form.price }}
+            </div>
+            
+            <div class="form-group">
+                <label>Cost Price</label>
+                {{ form.cost_price }}
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>Quantity *</label>
+                {{ form.quantity }}
+            </div>
+            
+            <div class="form-group">
+                <label>Reorder Level</label>
+                {{ form.reorder_level }}
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>Product Image</label>
+            {{ form.image }}
+        </div>
+        
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-success"> Save Product</button>
+            <a href="{% url 'product_list' %}" class="btn btn-danger"> Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

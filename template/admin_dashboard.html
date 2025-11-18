@@ -1,0 +1,472 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .stat-card h3 {
+        font-size: 0.9rem;
+        opacity: 0.9;
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-card .value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    
+    .stat-card.green {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }
+    
+    .stat-card.orange {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    
+    .stat-card.red {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+    
+    .stat-card.purple {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    
+    .stat-card.teal {
+        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    }
+    
+    .stat-card.pink {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+
+    .date-filter {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    
+    .filter-options {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+    
+    .filter-btn {
+        padding: 0.75rem 1.5rem;
+        border: 2px solid #667eea;
+        background: white;
+        color: #667eea;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+    
+    .filter-btn:hover {
+        background: #667eea;
+        color: white;
+    }
+    
+    .filter-btn.active {
+        background: #667eea;
+        color: white;
+    }
+    
+    .date-input-group {
+        flex: 1;
+    }
+    
+    .date-input-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #333;
+    }
+    
+    .date-display {
+        text-align: center;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #667eea;
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .search-container {
+        background: #fff;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    .search-input:focus {
+        border-color: #4f46e5;
+        outline: none;
+    }
+
+    .sale-row.hidden, .stock-row.hidden {
+        display: none;
+    }
+
+    .no-results {
+        display: none;
+        text-align: center;
+        padding: 1.5rem;
+        color: #888;
+    }
+    .no-results.show {
+        display: table-row;
+    }
+</style>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1>Admin Dashboard</h1>
+    <div style="font-size: 1.1rem; color: #667eea; font-weight: 600;">
+        {% if date_filter == 'today' %}
+            Today's Report
+        {% elif date_filter == 'week' %}
+            Weekly Report ({{ start_date|date:"M d" }} - {{ end_date|date:"M d, Y" }})
+        {% elif date_filter == 'month' %}
+            Monthly Report ({{ start_date|date:"F Y" }})
+        {% elif date_filter == 'year' %}
+            Yearly Report ({{ start_date|date:"Y" }})
+        {% else %}
+            Custom Report ({{ start_date|date:"M d, Y" }} - {{ end_date|date:"M d, Y" }})
+        {% endif %}
+    </div>
+</div>
+
+<!-- Date Filter Section -->
+<div class="date-filter">
+    <h3 style="margin-bottom: 1rem;">Filter by Date Range</h3>
+    
+    <form id="dateFilterForm" method="get">
+        <div class="filter-options">
+            <button type="button" class="filter-btn {% if date_filter == 'today' %}active{% endif %}" onclick="setDateFilter('today')">
+                Today
+            </button>
+            <button type="button" class="filter-btn {% if date_filter == 'week' %}active{% endif %}" onclick="setDateFilter('week')">
+                This Week
+            </button>
+            <button type="button" class="filter-btn {% if date_filter == 'month' %}active{% endif %}" onclick="setDateFilter('month')">
+                This Month
+            </button>
+            <button type="button" class="filter-btn {% if date_filter == 'year' %}active{% endif %}" onclick="setDateFilter('year')">
+                This Year
+            </button>
+        </div>
+        
+        <!-- Permanently visible date range inputs -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 1rem; align-items: end; margin-top: 1.5rem;">
+            <div class="date-input-group">
+                <label>Start Date</label>
+                <input type="date" id="startDate" name="custom_start" value="{{ start_date|date:'Y-m-d' }}" class="form-control">
+            </div>
+            <div class="date-input-group">
+                <label>End Date</label>
+                <input type="date" id="endDate" name="custom_end" value="{{ end_date|date:'Y-m-d' }}" class="form-control">
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary">Apply Date Range</button>
+            </div>
+        </div>
+        
+        <input type="hidden" id="dateFilter" name="date_filter" value="{{ date_filter }}">
+    </form>
+    
+    <div class="date-display">
+        {% if date_filter == 'today' %}
+            Showing data for: <strong>{{ today|date:"F d, Y" }}</strong>
+        {% elif date_filter == 'week' %}
+            Week of: <strong>{{ start_date|date:"F d" }} - {{ end_date|date:"F d, Y" }}</strong>
+        {% elif date_filter == 'month' %}
+            Month of: <strong>{{ start_date|date:"F Y" }}</strong>
+        {% elif date_filter == 'year' %}
+            Year: <strong>{{ start_date|date:"Y" }}</strong>
+        {% else %}
+            Custom Period: <strong>{{ start_date|date:"M d, Y" }} to {{ end_date|date:"M d, Y" }}</strong>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Statistics Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Total Products</h3>
+        <div class="value">{{ total_products }}</div>
+    </div>
+    
+    <div class="stat-card green">
+        <h3>Total Sales</h3>
+        <div class="value">{{ total_sales }}</div>
+    </div>
+    
+    <div class="stat-card orange">
+        <h3>Low Stock Items</h3>
+        <div class="value">{{ low_stock_products }}</div>
+    </div>
+    
+    <div class="stat-card red">
+        <h3>Debtors</h3>
+        <div class="value">{{ debtors_count }}</div>
+    </div>
+    
+    <!-- NEW: Payment Method Statistics -->
+    <div class="stat-card purple">
+        <h3>Cash Payments</h3>
+        <div class="value">₦{{ cash_payments|floatformat:2 }}</div>
+    </div>
+    
+    <div class="stat-card teal">
+        <h3>Transfer Payments</h3>
+        <div class="value">₦{{ transfer_payments|floatformat:2 }}</div>
+    </div>
+    
+    <div class="stat-card pink">
+        <h3>Card Payments</h3>
+        <div class="value">₦{{ card_payments|floatformat:2 }}</div>
+    </div>
+</div>
+
+<!-- Total Revenue Card -->
+<div class="card">
+    <div class="card-header">
+        <h2>Total Revenue ({{ date_filter|title }})</h2>
+    </div>
+    <div style="font-size: 2.5rem; font-weight: bold; color: #667eea; text-align: center; padding: 2rem;">
+        ₦{{ total_revenue|floatformat:2 }}
+    </div>
+</div>
+
+<!-- Recent Sales Section -->
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Recent Sales</h2>
+    </div>
+    
+    <!-- Search Bar for Recent Sales -->
+    <div class="search-container">
+        <input id="salesSearchInput"
+               type="text"
+               class="search-input"
+               placeholder="Search by customer name, invoice number, or staff..."
+               autofocus>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Invoice</th>
+                <th>Customer</th>
+                <th>Staff</th>
+                <th>Total</th>
+                <th>Payment Status</th>
+                <th>Date</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="salesTableBody">
+            {% for sale in recent_sales %}
+            <tr class="sale-row"
+                data-name="{{ sale.customer_name|default:'walk-in'|lower }}"
+                data-invoice="{{ sale.invoice_number|lower }}"
+                data-staff="{{ sale.staff.first_name|lower }} {{ sale.staff.last_name|lower }}">
+
+                <td><strong>{{ sale.invoice_number }}</strong></td>
+                <td>{{ sale.customer_name|default:"Walk-in" }}</td>
+                <td>{{ sale.staff.first_name }} {{ sale.staff.last_name }}</td>
+                <td>₦{{ sale.total|floatformat:2 }}</td>
+                <td>
+                    {% if sale.payment_status == 'paid' %}
+                    <span class="badge badge-success">Paid</span>
+                    {% elif sale.payment_status == 'partial' %}
+                    <span class="badge badge-warning">Partial</span>
+                    {% else %}
+                    <span class="badge badge-danger">Unpaid</span>
+                    {% endif %}
+                </td>
+                <td>{{ sale.created_at|date:"M d, Y H:i" }}</td>
+                <td>
+                    <a href="{% url 'view_receipt' sale.id %}" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
+                        View
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 2rem;">No sales yet</td>
+            </tr>
+            {% endfor %}
+
+            <tr id="noSalesResults" class="no-results">
+                <td colspan="7">No matching sales found.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Low Stock Alert Section -->
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Low Stock Alert</h2>
+    </div>
+    
+    <!-- Search Bar for Low Stock -->
+    <div class="search-container">
+        <input id="stockSearchInput"
+               type="text"
+               class="search-input"
+               placeholder="Search low stock products by name or SKU..."
+               autofocus>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Current Stock</th>
+                <th>Reorder Level</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="stockTableBody">
+            {% for product in low_stock %}
+            <tr class="stock-row"
+                data-name="{{ product.name|lower }}"
+                data-sku="{{ product.sku|lower }}">
+
+                <td><strong>{{ product.name }}</strong></td>
+                <td>{{ product.sku }}</td>
+                <td><span class="badge badge-danger">{{ product.quantity }}</span></td>
+                <td>{{ product.reorder_level }}</td>
+                <td>
+                    <a href="{% url 'edit_product' product.id %}" class="btn btn-warning" style="padding: 0.4rem 0.8rem;">
+                        Restock
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 2rem;">All products are well stocked! 🎉</td>
+            </tr>
+            {% endfor %}
+
+            <tr id="noStockResults" class="no-results">
+                <td colspan="5">No matching low stock products found.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+// Date Filter Functions
+function setDateFilter(filter) {
+    document.getElementById('dateFilter').value = filter;
+    document.getElementById('dateFilterForm').submit();
+}
+
+// Set max date for date inputs to today
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').max = today;
+    document.getElementById('endDate').max = today;
+    
+    // Set default end date to today if not set
+    if (!document.getElementById('endDate').value) {
+        document.getElementById('endDate').value = today;
+    }
+});
+
+// Search functionality for recent sales
+document.addEventListener('DOMContentLoaded', () => {
+    const salesSearchInput = document.getElementById('salesSearchInput');
+    const salesRows = document.querySelectorAll('.sale-row');
+    const noSalesResults = document.getElementById('noSalesResults');
+
+    salesSearchInput.addEventListener('input', () => {
+        const term = salesSearchInput.value.toLowerCase().trim();
+        let visible = 0;
+
+        salesRows.forEach(row => {
+            const matches =
+                row.dataset.name.startsWith(term) ||
+                row.dataset.invoice.startsWith(term) ||
+                row.dataset.staff.startsWith(term);
+
+            if (matches) {
+                row.classList.remove('hidden');
+                visible++;
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+
+        noSalesResults.classList.toggle('show', visible === 0 && term !== "");
+    });
+
+    // Low Stock Search
+    const stockSearchInput = document.getElementById('stockSearchInput');
+    const stockRows = document.querySelectorAll('.stock-row');
+    const noStockResults = document.getElementById('noStockResults');
+
+    stockSearchInput.addEventListener('input', () => {
+        const term = stockSearchInput.value.toLowerCase().trim();
+        let visible = 0;
+
+        stockRows.forEach(row => {
+            const matches =
+                row.dataset.name.startsWith(term) ||
+                row.dataset.sku.startsWith(term);
+
+            if (matches) {
+                row.classList.remove('hidden');
+                visible++;
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+
+        noStockResults.classList.toggle('show', visible === 0 && term !== "");
+    });
+
+    // Clear search with ESC
+    [salesSearchInput, stockSearchInput].forEach(input => {
+        input.addEventListener('keydown', e => {
+            if (e.key === "Escape") {
+                e.target.value = "";
+                e.target.dispatchEvent(new Event("input"));
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+
+{% block title %}Login - Inventory System{% endblock %}
+
+{% block content %}
+<style>
+    .login-container {
+        max-width: 450px;
+        margin: 5rem auto;
+    }
+    
+    .login-card {
+        background: white;
+        padding: 3rem;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+    
+    .login-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .login-header h2 {
+        color: #667eea;
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+</style>
+
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <h2> Login</h2>
+            <p>Enter your credentials to access the system</p>
+        </div>
+        
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" class="form-control" required autofocus>
+            </div>
+            
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" class="form-control" required>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

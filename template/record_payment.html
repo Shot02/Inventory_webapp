@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+
+{% block title %}Record Payment{% endblock %}
+
+{% block content %}
+<h1> Record Payment for Invoice {{ sale.invoice_number }}</h1>
+
+<div class="card">
+    <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+        <p><strong>Customer:</strong> {{ sale.customer_name|default:"Walk-in" }}</p>
+        <p><strong>Total Amount:</strong> ₦{{ sale.total|floatformat:2 }}</p>
+        <p><strong>Amount Paid:</strong> ₦{{ sale.amount_paid|floatformat:2 }}</p>
+        <p><strong style="color: #dc3545;">Outstanding Balance:</strong> 
+           <strong style="font-size: 1.3rem;">₦{{ sale.balance|floatformat:2 }}</strong>
+        </p>
+    </div>
+    
+    <form method="post" id="paymentForm">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label>Payment Amount *</label>
+            {{ form.amount }}
+            <small style="color: #666;">Maximum: ₦{{ sale.balance|floatformat:2 }}</small>
+        </div>
+        
+        <div class="form-group">
+            <label>Payment Method *</label>
+            {{ form.payment_method }}
+        </div>
+        
+        <div class="form-group">
+            <label>Reference Number</label>
+            {{ form.reference }}
+        </div>
+        
+        <div class="form-group">
+            <label>Notes</label>
+            {{ form.notes }}
+        </div>
+        
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-success" id="submitBtn"> Record Payment</button>
+            <a href="{% url 'debtors_list' %}" class="btn btn-danger"> Cancel</a>
+        </div>
+    </form>
+</div>
+
+<!-- Receipt Modal (Hidden by default) -->
+<div id="receiptModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; padding: 2rem;">
+    <div class="card" style="max-width: 800px; width: 100%; max-height: 90vh; overflow-y: auto;">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h1 style="color: #667eea;">A.A ASHIRU ENTERPRIISES SAKI</h1>
+            <h2 style="color: #667eea;">HOME OF QUALITY ENGINEERING KITS</h2>
+            <h2 style="color: #667eea;">PAYMENT RECEIPT</h2>
+            <p style="font-size: 1.2rem;"><strong>Invoice: {{ sale.invoice_number }}</strong></p>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+            <div>
+                <h3>Customer Information</h3>
+                <p><strong>Name:</strong> {{ sale.customer_name|default:"Walk-in Customer" }}</p>
+                <p><strong>Phone:</strong> {{ sale.customer_phone|default:"-" }}</p>
+            </div>
+            <div style="text-align: right;">
+                <p><strong>Date:</strong> <span id="receiptDate"></span></p>
+                <p><strong>Payment Type:</strong> <span id="receiptPaymentType"></span></p>
+                <p><strong>Reference:</strong> <span id="receiptReference"></span></p>
+            </div>
+        </div>
+        
+        <div style="text-align: center; background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
+            <h3 style="color: #48bb78; margin-bottom: 0.5rem;">PAYMENT CONFIRMED</h3>
+            <p style="font-size: 1.1rem; margin: 0.5rem 0;"><strong>Amount Paid:</strong> <span id="receiptAmount" style="color: #48bb78; font-size: 1.3rem;"></span></p>
+            <p style="font-size: 1.1rem; margin: 0.5rem 0;"><strong>Previous Balance:</strong> ₦{{ sale.balance|floatformat:2 }}</p>
+            <p style="font-size: 1.1rem; margin: 0.5rem 0;"><strong>New Balance:</strong> <span id="receiptNewBalance" style="color: #dc3545; font-size: 1.3rem;"></span></p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px dashed #ccc;">
+            <p style="font-size: 0.9rem; color: #666;">Thank you for your payment!</p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 2rem; display: flex; gap: 1rem; justify-content: center;">
+            <button onclick="printReceipt()" class="btn btn-primary"> Print Receipt</button>
+            <button onclick="closeReceiptAndRedirect()" class="btn btn-success"> Back to Debtors</button>
+            <button onclick="viewFullReceipt()" class="btn btn-info"> View Full Receipt</button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Set max amount for payment
+    const amountInput = document.querySelector('#id_amount');
+    if (amountInput) {
+        amountInput.setAttribute('max', '{{ sale.balance }}');
+        amountInput.setAttribute('step', '0.01');
+    }
+    
+    // Handle form submission
+    document.getElementById('paymentForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Processing...';
+        
+        const formData = new FormData(this);
+        
+        fetch('', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show receipt modal
+                showReceipt(data);
+            } else {
+                alert('Error: ' + data.error);
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Record Payment';
+            }
+        })
+        .catch(error => {
+            alert('Error processing payment: ' + error);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Record Payment';
+        });
+    });
+});
+
+function showReceipt(data) {
+    // Set receipt data
+    document.getElementById('receiptDate').textContent = new Date().toLocaleString();
+    document.getElementById('receiptPaymentType').textContent = document.querySelector('#id_payment_method option:checked').text;
+    document.getElementById('receiptReference').textContent = document.getElementById('id_reference').value || 'N/A';
+    document.getElementById('receiptAmount').textContent = '₦' + parseFloat(document.getElementById('id_amount').value).toFixed(2);
+    
+    // Calculate new balance
+    const previousBalance = {{ sale.balance }};
+    const paymentAmount = parseFloat(document.getElementById('id_amount').value);
+    const newBalance = previousBalance - paymentAmount;
+    document.getElementById('receiptNewBalance').textContent = '₦' + newBalance.toFixed(2);
+    
+    // Show modal
+    document.getElementById('receiptModal').style.display = 'flex';
+}
+
+function closeReceiptAndRedirect() {
+    document.getElementById('receiptModal').style.display = 'none';
+    window.location.href = "{% url 'debtors_list' %}";
+}
+
+function printReceipt() {
+    const receiptContent = document.getElementById('receiptModal').querySelector('.card').innerHTML;
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Payment Receipt - {{ sale.invoice_number }}</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 2rem; }
+                .card { border: 1px solid #ddd; padding: 2rem; border-radius: 12px; }
+                h1, h2, h3 { color: #667eea; text-align: center; }
+                .btn { display: none; }
+            </style>
+        </head>
+        <body>
+            ${receiptContent}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+}
+
+function viewFullReceipt() {
+    window.location.href = "{% url 'view_receipt' sale.id %}";
+}
+
+// Close modal when clicking outside
+document.getElementById('receiptModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeReceiptAndRedirect();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+
+{% block title %}Saved Carts{% endblock %}
+
+{% block extra_css %}
+<style>
+    .carts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .cart-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        padding: 1.5rem;
+        border-left: 4px solid #667eea;
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .cart-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    
+    .cart-header {
+        display: flex;
+        justify-content: between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+    
+    .cart-name {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+        flex: 1;
+    }
+    
+    .cart-meta {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+        color: #666;
+    }
+    
+    .cart-items {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        max-height: 150px;
+        overflow-y: auto;
+    }
+    
+    .cart-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.3rem 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .cart-item:last-child {
+        border-bottom: none;
+    }
+    
+    .cart-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+    
+    .badge {
+        padding: 0.3rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    
+    .badge-items {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .badge-amount {
+        background: #e8f5e8;
+        color: #2e7d32;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1>🛒 My Saved Carts</h1>
+    <a href="{% url 'home' %}" class="btn btn-primary">Back to POS</a>
+</div>
+
+{% if saved_carts %}
+<div class="carts-grid">
+    {% for cart in saved_carts %}
+    <div class="cart-card">
+        <div class="cart-header">
+            <h3 class="cart-name">{{ cart.cart_name }}</h3>
+            <div style="display: flex; gap: 0.3rem;">
+                <span class="badge badge-items">{{ cart.items_count }} items</span>
+                <span class="badge badge-amount">₦{{ cart.total_amount|floatformat:2 }}</span>
+            </div>
+        </div>
+        
+        <div class="cart-meta">
+            <span>{{ cart.created_at|timesince }} ago</span>
+            {% if cart.cart_data.customer_name and cart.cart_data.customer_name != 'Walk-in Customer' %}
+            <span>{{ cart.cart_data.customer_name }}</span>
+            {% endif %}
+        </div>
+        
+        <div class="cart-items">
+            {% for item in cart.cart_data.items %}
+            <div class="cart-item">
+                <span>{{ item.name }}</span>
+                <span><strong>₦{{ item.total|floatformat:2 }}</strong></span>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="cart-actions">
+            <button onclick="loadCart({{ cart.id }})" class="btn btn-success" style="flex: 1;">
+                Load Cart
+            </button>
+            <a href="{% url 'view_saved_cart' cart.id %}" class="btn btn-primary">
+                View
+            </a>
+            <button onclick="deleteCart({{ cart.id }}, '{{ cart.cart_name }}')" class="btn btn-danger">
+                🗑️
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="empty-state-icon">🛒</div>
+    <h3>No Saved Carts Yet</h3>
+    <p>Save your carts from the POS page to see them here.</p>
+    <!-- <a href="{% url 'home' %}" class="btn btn-primary">Go to POS</a> -->
+</div>
+{% endif %}
+
+<script>
+async function loadCart(cartId) {
+    try {
+        const response = await fetch(`/api/load-saved-cart/${cartId}/`);
+        const result = await response.json();
+        
+        if (result.success) {
+            // Store cart data in sessionStorage and redirect to POS
+            sessionStorage.setItem('cartToLoad', JSON.stringify({
+                data: result.cart_data,
+                name: result.cart_name
+            }));
+            window.location.href = "{% url 'home' %}";
+        } else {
+            alert('Error loading cart: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error loading cart: ' + error);
+    }
+}
+
+async function deleteCart(cartId, cartName) {
+    if (confirm(`Are you sure you want to delete "${cartName}"?`)) {
+        try {
+            const response = await fetch(`/api/delete-saved-cart/${cartId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert(result.message);
+                location.reload();
+            } else {
+                alert('Error deleting cart: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error deleting cart: ' + error);
+        }
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

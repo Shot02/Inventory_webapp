@@ -1,0 +1,219 @@
+{% extends 'base.html' %}
+
+{% block title %}Refund Requests{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-container {
+        background: #fff;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    .search-input:focus {
+        border-color: #4f46e5;
+        outline: none;
+    }
+
+    .refund-row.hidden {
+        display: none;
+    }
+
+    .no-results {
+        display: none;
+        text-align: center;
+        padding: 1.5rem;
+        color: #888;
+    }
+    .no-results.show {
+        display: table-row;
+    }
+    
+    .status-badge {
+        padding: 0.3rem 0.8rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .status-pending {
+        background: #fef3c7;
+        color: #92400e;
+    }
+    
+    .status-approved {
+        background: #d1fae5;
+        color: #065f46;
+    }
+    
+    .status-declined {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1>Refund Requests</h1>
+    <a href="{% url 'create_refund_request' %}" class="btn btn-primary">Request Refund</a>
+</div>
+
+<!-- Search Bar -->
+<div class="search-container">
+    <input id="refundSearchInput"
+           type="text"
+           class="search-input"
+           placeholder="Search by customer name, phone, or reason..."
+           autofocus>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Customer Name</th>
+                <th>Phone</th>
+                <th>Reason</th>
+                <th>Amount</th>
+                <th>Request Date</th>
+                <th>Status</th>
+                <th>Created By</th>
+                {% if user.role == 'admin' or user.is_superuser %}
+                <th>Actions</th>
+                {% else %}
+                <th>Action</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody id="refundTableBody">
+            {% for refund in refund_requests %}
+            <tr class="refund-row"
+                data-name="{{ refund.customer_name|lower }}"
+                data-phone="{{ refund.customer_phone|lower }}"
+                data-reason="{{ refund.reason|lower }}">
+
+                <td><strong>#{{ refund.id }}</strong></td>
+                <td>{{ refund.customer_name }}</td>
+                <td>{{ refund.customer_phone }}</td>
+                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ refund.reason }}
+                </td>
+                <td>₦{{ refund.amount|floatformat:2 }}</td>
+                <td>{{ refund.request_date|date:"M d, Y H:i" }}</td>
+                <td>
+                    {% if refund.status == 'pending' %}
+                    <span class="status-badge status-pending">{{ refund.status|title }}</span>
+                    {% elif refund.status == 'approved' %}
+                    <span class="status-badge status-approved">{{ refund.status|title }}</span>
+                    {% else %}
+                    <span class="status-badge status-declined">{{ refund.status|title }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ refund.created_by.first_name|default:refund.created_by.username }}</td>
+                <td>
+                    <div class="action-buttons">
+                        {% if refund.can_edit and refund.created_by == user %}
+                        <a href="{% url 'edit_refund_request' refund.id %}" class="btn btn-primary btn-sm">
+                            Edit
+                        </a>
+                        {% endif %}
+                        
+                        {% if user.role == 'admin' or user.is_superuser %}
+                            {% if refund.status == 'pending' %}
+                            <button onclick="approveRefund({{ refund.id }})" class="btn btn-success btn-sm">
+                                Approve
+                            </button>
+                            <button onclick="declineRefund({{ refund.id }})" class="btn btn-danger btn-sm">
+                                Decline
+                            </button>
+                            {% else %}
+                            <span class="btn btn-secondary btn-sm" disabled>
+                                Processed
+                            </span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="{% if user.role == 'admin' or user.is_superuser %}9{% else %}8{% endif %}" style="text-align: center; padding: 2rem;">
+                    No refund requests found.
+                </td>
+            </tr>
+            {% endfor %}
+
+            <tr id="noResultsRow" class="no-results">
+                <td colspan="{% if user.role == 'admin' or user.is_superuser %}9{% else %}8{% endif %}">🔍 No matching refund requests found.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('refundSearchInput');
+    const rows = document.querySelectorAll('.refund-row');
+    const noResults = document.getElementById('noResultsRow');
+
+    searchInput.addEventListener('input', () => {
+        const term = searchInput.value.toLowerCase().trim();
+        let visible = 0;
+
+        rows.forEach(row => {
+            const matches =
+                row.dataset.name.startsWith(term) ||
+                row.dataset.phone.startsWith(term) ||
+                row.dataset.reason.startsWith(term);
+
+            if (matches) {
+                row.classList.remove('hidden');
+                visible++;
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+
+        noResults.classList.toggle('show', visible === 0 && term !== "");
+    });
+
+    // Clear search with ESC
+    searchInput.addEventListener('keydown', e => {
+        if (e.key === "Escape") {
+            searchInput.value = "";
+            searchInput.dispatchEvent(new Event("input"));
+        }
+    });
+});
+
+function approveRefund(refundId) {
+    if (confirm('Are you sure you want to approve this refund request?')) {
+        window.location.href = `/refund-requests/approve/${refundId}/`;
+    }
+}
+
+function declineRefund(refundId) {
+    if (confirm('Are you sure you want to decline this refund request?')) {
+        window.location.href = `/refund-requests/decline/${refundId}/`;
+    }
+}
+</script>
+{% endblock %}

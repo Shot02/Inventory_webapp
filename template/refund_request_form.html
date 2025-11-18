@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ action }} Refund Request{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 0 auto;">
+    <h1 style="margin-bottom: 2rem;">{{ action }} Refund Request</h1>
+
+    <div class="card">
+        <form method="post">
+            {% csrf_token %}
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Customer Name *</label>
+                    {{ form.customer_name }}
+                    {% if form.customer_name.errors %}
+                    <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
+                        {{ form.customer_name.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label>Customer Phone *</label>
+                    {{ form.customer_phone }}
+                    {% if form.customer_phone.errors %}
+                    <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
+                        {{ form.customer_phone.errors }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Reason for Refund *</label>
+                {{ form.reason }}
+                {% if form.reason.errors %}
+                <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
+                    {{ form.reason.errors }}
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label>Refund Amount (₦) *</label>
+                {{ form.amount }}
+                {% if form.amount.errors %}
+                <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
+                    {{ form.amount.errors }}
+                </div>
+                {% endif %}
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <p><strong>Request Date:</strong> {% if refund_request %}{{ refund_request.request_date|date:"M d, Y H:i" }}{% else %}{{ current_time|date:"M d, Y H:i" }}{% endif %}</p>
+                <p><strong>Status:</strong> {% if refund_request %}{{ refund_request.get_status_display }}{% else %}Pending{% endif %}</p>
+            </div>
+            
+            <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn btn-success" style="flex: 1;">
+                    {% if action == 'Create' %}Submit Request{% else %}Update Request{% endif %}
+                </button>
+                <a href="{% url 'refund_requests_list' %}" class="btn btn-danger">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ saved_cart.cart_name }} - Details{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1>{{ saved_cart.cart_name }}</h1>
+    <div style="display: flex; gap: 1rem;">
+        <button onclick="loadCart({{ saved_cart.id }})" class="btn btn-success">Load Cart</button>
+        <a href="{% url 'saved_carts_list' %}" class="btn btn-primary">Back to Saved Carts</a>
+    </div>
+</div>
+
+<div class="card">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+        <div>
+            <h3>Cart Information</h3>
+            <p><strong>Cart Name:</strong> {{ saved_cart.cart_name }}</p>
+            <p><strong>Items Count:</strong> {{ saved_cart.items_count }}</p>
+            <p><strong>Total Amount:</strong> ₦{{ saved_cart.total_amount|floatformat:2 }}</p>
+            <p><strong>Saved:</strong> {{ saved_cart.created_at|date:"M d, Y H:i" }}</p>
+        </div>
+        <div>
+            <h3>Customer Information</h3>
+            <p><strong>Name:</strong> {{ saved_cart.cart_data.customer_name|default:"Walk-in Customer" }}</p>
+            <p><strong>Phone:</strong> {{ saved_cart.cart_data.customer_phone|default:"Not provided" }}</p>
+            <p><strong>Payment Type:</strong> {{ saved_cart.cart_data.payment_type|title }}</p>
+            <p><strong>Payment Method:</strong> {{ saved_cart.cart_data.payment_method|title }}</p>
+        </div>
+    </div>
+
+    <h3>Cart Items ({{ saved_cart.items_count }})</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Price</th>
+                <th>Quantity</th>
+                <th>Discount</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in saved_cart.cart_data.items %}
+            <tr>
+                <td><strong>{{ item.name }}</strong></td>
+                <td>₦{{ item.price|floatformat:2 }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>₦{{ item.discount|floatformat:2 }}</td>
+                <td><strong>₦{{ item.total|floatformat:2 }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+async function loadCart(cartId) {
+    try {
+        const response = await fetch(`/api/load-saved-cart/${cartId}/`);
+        const result = await response.json();
+        
+        if (result.success) {
+            sessionStorage.setItem('cartToLoad', JSON.stringify({
+                data: result.cart_data,
+                name: result.cart_name
+            }));
+            window.location.href = "{% url 'home' %}";
+        } else {
+            alert('Error loading cart: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error loading cart: ' + error);
+    }
+}
+</script>
+{% endblock %}

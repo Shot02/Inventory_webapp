@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Receipt - {{ sale.invoice_number }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 800px; margin: 2rem auto;">
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="color: #667eea;">A.A ASHIRU ENTERPRIISES SAKI</h1>
+        <h2 style="color: #667eea;">HOME OF QUALITY ENGINEERING KITS</h2>
+        <h2 style="color: #667eea;">SALES RECEIPT</h1>
+        <p style="font-size: 1.2rem;"><strong>Invoice: {{ sale.invoice_number }}</strong></p>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+        <div>
+            <h3>Customer Information</h3>
+            <p><strong>Name:</strong> {{ sale.customer_name|default:"Walk-in Customer" }}</p>
+            <p><strong>Phone:</strong> {{ sale.customer_phone|default:"-" }}</p>
+        </div>
+        <div style="text-align: right;">
+            <p><strong>Date:</strong> {{ sale.created_at|date:"M d, Y H:i" }}</p>
+            <p><strong>Served By:</strong> {{ sale.staff.first_name }}</p>
+            <!-- NEW: Payment Method Display -->
+            <p><strong>Payment Method:</strong> 
+                {% with latest_payment=sale.payments.first %}
+                    {% if latest_payment %}
+                        {% if latest_payment.payment_method == 'cash' %}
+                            Cash
+                        {% elif latest_payment.payment_method == 'transfer' %}
+                            Transfer
+                        {% elif latest_payment.payment_method == 'card' %}
+                            Card
+                        {% else %}
+                            {{ latest_payment.payment_method|title }}
+                        {% endif %}
+                    {% else %}
+                        Cash
+                    {% endif %}
+                {% endwith %}
+            </p>
+        </div>
+    </div>
+    
+    <table style="margin-bottom: 2rem;">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Product</th>
+                <th>Price</th>
+                <th>Qty</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in sale.items.all %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ item.product_name }}</td>
+                <td>₦{{ item.price|floatformat:2 }}</td>
+                <td>{{ item.quantity }}</td>
+                <td><strong>₦{{ item.total|floatformat:2 }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div style="text-align: right; border-top: 2px solid #333; padding-top: 1rem;">
+        <p style="font-size: 1.1rem;"><strong>Subtotal:</strong> ₦{{ sale.subtotal|floatformat:2 }}</p>
+        <p style="font-size: 1.1rem;"><strong>Total Discount:</strong> ₦{{ sale.discount|floatformat:2 }}</p>
+        <p style="font-size: 1.5rem; color: #667eea;"><strong>GRAND TOTAL:</strong> ₦{{ sale.total|floatformat:2 }}</p>
+        <p style="font-size: 1.1rem;"><strong>Amount Paid:</strong> ₦{{ sale.amount_paid|floatformat:2 }}</p>
+        <!-- NEW: Payment Method in summary -->
+        <p style="font-size: 1.1rem;">
+            <strong>Payment Type:</strong> 
+            {% with latest_payment=sale.payments.first %}
+                {% if latest_payment %}
+                    <span style="text-transform: uppercase; font-weight: bold;">
+                        {% if latest_payment.payment_method == 'cash' %}
+                            CASH
+                        {% elif latest_payment.payment_method == 'transfer' %}
+                            TRANSFER
+                        {% elif latest_payment.payment_method == 'card' %}
+                            CARD
+                        {% else %}
+                            {{ latest_payment.payment_method|upper }}
+                        {% endif %}
+                    </span>
+                {% else %}
+                    <span style="text-transform: uppercase; font-weight: bold;">CASH</span>
+                {% endif %}
+            {% endwith %}
+        </p>
+        {% if sale.balance > 0 %}
+        <p style="font-size: 1.1rem; color: #dc3545;"><strong>Balance:</strong> ₦{{ sale.balance|floatformat:2 }}</p>
+        {% endif %}
+    </div>
+    
+    <div style="text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px dashed #ccc;">
+        <p style="font-size: 0.9rem; color: #666;">Thank you for your business!</p>
+    </div>
+    
+    <div class="no-print" style="text-align: center; margin-top: 2rem;">
+        <button onclick="window.print()" class="btn btn-primary"> Print Receipt</button>
+        <a href="#" onclick="history.back()" class="btn btn-success">Back</a>
+    </div>
+</div>
+{% endblock %}

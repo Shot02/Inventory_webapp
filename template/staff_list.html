@@ -1,0 +1,302 @@
+{% extends 'base.html' %}
+
+{% block title %}Staff Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-container {
+        background: #fff;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    .search-input:focus {
+        border-color: #4f46e5;
+        outline: none;
+    }
+
+    .staff-row.hidden {
+        display: none;
+    }
+
+    .no-results {
+        display: none;
+        text-align: center;
+        padding: 1.5rem;
+        color: #888;
+    }
+    .no-results.show {
+        display: table-row;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1> Staff Management</h1>
+    <a href="{% url 'register_staff' %}" class="btn btn-primary"> Register New Staff</a>
+</div>
+
+<!-- Search Bar -->
+<div class="search-container">
+    <input id="staffSearchInput"
+           type="text"
+           class="search-input"
+           placeholder="Search staff by name, username, email, or role..."
+           autofocus>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Full Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Role</th>
+                <th>Date Joined</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="staffTableBody">
+            {% for user in staff %}
+            <tr class="staff-row"
+                data-username="{{ user.username|lower }}"
+                data-name="{{ user.first_name|lower }} {{ user.last_name|lower }}"
+                data-email="{{ user.email|lower }}"
+                data-role="{{ user.role|lower }}">
+
+                <td><strong>{{ user.username }}</strong></td>
+                <td>{{ user.first_name }} {{ user.last_name }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.phone|default:"-" }}</td>
+                <td><span class="badge badge-success">{{ user.role|title }}</span></td>
+                <td>{{ user.date_joined|date:"M d, Y" }}</td>
+                <td>
+                    {% if user.is_active %}
+                    <span class="badge badge-success">Active</span>
+                    {% else %}
+                    <span class="badge badge-danger">Inactive</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <button onclick="editStaff({{ user.id }})" class="btn btn-primary btn-sm" style="padding: 0.3rem 0.6rem;">
+                            Edit
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 2rem;">No staff members found</td>
+            </tr>
+            {% endfor %}
+
+            <tr id="noResultsRow" class="no-results">
+                <td colspan="8">🔍 No matching staff members found.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Edit Staff Modal -->
+<div id="editStaffModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div class="card" style="width: 500px; max-width: 90%; max-height: 90vh; overflow-y: auto;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Edit Staff Member</h2>
+            <button onclick="closeEditModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">×</button>
+        </div>
+        
+        <form id="editStaffForm" method="post">
+            {% csrf_token %}
+            <input type="hidden" id="editUserId" name="user_id">
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Username *</label>
+                    <input type="text" id="editUsername" name="username" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" id="editEmail" name="email" class="form-control" required>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>First Name *</label>
+                    <input type="text" id="editFirstName" name="first_name" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Last Name *</label>
+                    <input type="text" id="editLastName" name="last_name" class="form-control" required>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="text" id="editPhone" name="phone" class="form-control">
+                </div>
+                
+                <div class="form-group">
+                    <label>Role *</label>
+                    <select id="editRole" name="role" class="form-control" required>
+                        <option value="admin">Admin</option>
+                        <option value="manager">Manager</option>
+                        <option value="staff">Staff</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Status</label>
+                <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="radio" id="editStatusActive" name="is_active" value="true" checked>
+                        Active
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="radio" id="editStatusInactive" name="is_active" value="false">
+                        Inactive
+                    </label>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-success" style="flex: 1;"> Update Staff</button>
+                <button type="button" onclick="closeEditModal()" class="btn btn-danger"> Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('staffSearchInput');
+    const rows = document.querySelectorAll('.staff-row');
+    const noResults = document.getElementById('noResultsRow');
+
+    searchInput.addEventListener('input', () => {
+        const term = searchInput.value.toLowerCase().trim();
+        let visible = 0;
+
+        rows.forEach(row => {
+            const matches =
+                row.dataset.username.startsWith(term) ||
+                row.dataset.name.startsWith(term) ||
+                row.dataset.email.startsWith(term) ||
+                row.dataset.role.startsWith(term);
+
+            if (matches) {
+                row.classList.remove('hidden');
+                visible++;
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+
+        noResults.classList.toggle('show', visible === 0 && term !== "");
+    });
+
+    // Clear search with ESC
+    searchInput.addEventListener('keydown', e => {
+        if (e.key === "Escape") {
+            searchInput.value = "";
+            searchInput.dispatchEvent(new Event("input"));
+        }
+    });
+});
+
+// Edit Staff Functions
+function editStaff(userId) {
+
+    const row = document.querySelector(`[onclick="editStaff(${userId})"]`).closest('tr');
+    const username = row.cells[0].textContent.trim();
+    const fullName = row.cells[1].textContent.trim();
+    const email = row.cells[2].textContent.trim();
+    const phone = row.cells[3].textContent.trim();
+    const role = row.cells[4].querySelector('.badge').textContent.trim().toLowerCase();
+    const isActive = row.cells[6].querySelector('.badge').textContent.trim() === 'Active';
+    
+    const nameParts = fullName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    document.getElementById('editUserId').value = userId;
+    document.getElementById('editUsername').value = username;
+    document.getElementById('editFirstName').value = firstName;
+    document.getElementById('editLastName').value = lastName;
+    document.getElementById('editEmail').value = email;
+    document.getElementById('editPhone').value = phone === '-' ? '' : phone;
+    document.getElementById('editRole').value = role;
+    
+    if (isActive) {
+        document.getElementById('editStatusActive').checked = true;
+    } else {
+        document.getElementById('editStatusInactive').checked = true;
+    }
+
+    // Show the modal
+    document.getElementById('editStaffModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('editStaffModal').style.display = 'none';
+}
+
+// Handle form submission
+document.getElementById('editStaffForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    fetch('{% url "edit_staff" %}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Staff member updated successfully!');
+            closeEditModal();
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error updating staff member: ' + error);
+    });
+});
+
+document.getElementById('editStaffModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEditModal();
+    }
+});
+</script>
+{% endblock %}

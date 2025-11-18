@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}Register Staff{% endblock %}
+
+{% block content %}
+<h1> Register New Staff Member</h1>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>Username *</label>
+                {{ form.username }}
+            </div>
+            
+            <div class="form-group">
+                <label>Email *</label>
+                {{ form.email }}
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>First Name *</label>
+                {{ form.first_name }}
+            </div>
+            
+            <div class="form-group">
+                <label>Last Name *</label>
+                {{ form.last_name }}
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>Phone</label>
+                {{ form.phone }}
+            </div>
+            
+            <div class="form-group">
+                <label>Role *</label>
+                {{ form.role }}
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>Password *</label>
+                {{ form.password1 }}
+            </div>
+            
+            <div class="form-group">
+                <label>Confirm Password *</label>
+                {{ form.password2 }}
+            </div>
+        </div>
+        
+        {% if form.errors %}
+        <div class="alert alert-error">
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-success"> Register Staff</button>
+            <a href="{% url 'staff_list' %}" class="btn btn-danger"> Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
