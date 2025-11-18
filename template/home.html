@@ -440,7 +440,7 @@ async function searchProducts(query) {
 function addToCart(product) {
     // Check if product is out of stock
     if (product.quantity === 0) {
-        alert(product.name + ' is OUT OF STOCK!');
+        console.log(product.name + ' is OUT OF STOCK!');
         return;
     }
     
@@ -450,7 +450,7 @@ function addToCart(product) {
         if (existing.quantity < product.quantity) {
             existing.quantity++;
         } else {
-            alert('Not enough stock available! Only ' + product.quantity + ' items in stock.');
+            console.log('Not enough stock available! Only ' + product.quantity + ' items in stock.');
             return;
         }
     } else {
@@ -531,7 +531,7 @@ function updateQuantity(index, change) {
     }
     
     if (newQty > item.max_quantity) {
-        alert('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
+        console.log('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
         return;
     }
     
@@ -544,13 +544,13 @@ function setQuantity(index, value) {
     const item = cart[index];
     
     if (isNaN(qty) || qty < 1) {
-        alert('Invalid quantity!');
+        console.log('Invalid quantity!');
         updateCart();
         return;
     }
     
     if (qty > item.max_quantity) {
-        alert('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
+        console.log('Not enough stock available! Only ' + item.max_quantity + ' items in stock.');
         updateCart();
         return;
     }
@@ -562,7 +562,7 @@ function setQuantity(index, value) {
 function setDiscount(index, value) {
     const discount = parseFloat(value) || 0;
     if (discount < 0) {
-        alert('Discount cannot be negative!');
+        console.log('Discount cannot be negative!');
         updateCart();
         return;
     }
@@ -671,7 +671,7 @@ function selectPaymentMethod(method, event = null) {
 // UPDATED: processSale function with proper payment type validation
 async function processSale() {
     if (cart.length === 0) {
-        alert('Cart is empty!');
+        console.log('Cart is empty!');
         return;
     }
     
@@ -686,26 +686,26 @@ async function processSale() {
     if (paymentType === 'installment') {
         // For installment: Name and phone are REQUIRED
         if (!customerName) {
-            alert('Customer name is required for installment payment!');
+            console.log('Customer name is required for installment payment!');
             document.getElementById('customerName').focus();
             return;
         }
         
         if (!customerPhone) {
-            alert('Customer phone is required for installment payment!');
+            console.log('Customer phone is required for installment payment!');
             document.getElementById('customerPhone').focus();
             return;
         }
         
         // Validate installment amount
         if (amountPaid <= 0) {
-            alert('Please enter the installment amount!');
+            console.log('Please enter the installment amount!');
             document.getElementById('amountPaid').focus();
             return;
         }
         
         if (amountPaid >= grandTotal) {
-            alert('Installment amount should be less than total amount!');
+            console.log('Installment amount should be less than total amount!');
             document.getElementById('amountPaid').focus();
             return;
         }
@@ -724,12 +724,12 @@ async function processSale() {
     const finalAmountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
     
     if (finalAmountPaid < 0) {
-        alert('Amount paid cannot be negative!');
+        console.log('Amount paid cannot be negative!');
         return;
     }
     
     if (finalAmountPaid > grandTotal) {
-        alert('Amount paid cannot exceed grand total!');
+        console.log('Amount paid cannot exceed grand total!');
         return;
     }
     
@@ -766,17 +766,17 @@ async function processSale() {
         if (result.success) {
             window.location.href = `/receipt/${result.sale_id}/`;
         } else {
-            alert('Error: ' + result.error);
+            console.log('Error: ' + result.error);
         }
     } catch (error) {
-        alert('Error processing sale: ' + error);
+        console.log('Error processing sale: ' + error);
     }
 }
 
 // Save Cart with Name Prompt
 async function saveCartWithName() {
     if (cart.length === 0) {
-        alert('Cart is empty! Nothing to save.');
+        console.log('Cart is empty! Nothing to save.');
         return;
     }
     
@@ -815,12 +815,12 @@ async function saveCartWithName() {
         const result = await response.json();
         
         if (result.success) {
-            alert('Cart saved successfully!');
+            console.log('Cart saved successfully!');
         } else {
-            alert('Error saving cart: ' + result.error);
+            console.log('Error saving cart: ' + result.error);
         }
     } catch (error) {
-        alert('Error saving cart: ' + error);
+        console.log('Error saving cart: ' + error);
     }
 }
 
@@ -871,7 +871,7 @@ function loadCartData(cartData) {
         document.getElementById('amountPaid').value = cartData.amount_paid;
     }
     
-    alert('Cart loaded successfully!');
+    console.log('Cart loaded successfully!');
 }
 
 function getCookie(name) {

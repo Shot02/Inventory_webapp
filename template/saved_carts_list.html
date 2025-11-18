@@ -156,7 +156,6 @@
     <div class="empty-state-icon">🛒</div>
     <h3>No Saved Carts Yet</h3>
     <p>Save your carts from the POS page to see them here.</p>
-    <!-- <a href="{% url 'home' %}" class="btn btn-primary">Go to POS</a> -->
 </div>
 {% endif %}
 
@@ -174,10 +173,10 @@ async function loadCart(cartId) {
             }));
             window.location.href = "{% url 'home' %}";
         } else {
-            alert('Error loading cart: ' + result.error);
+            console.log('Error loading cart: ' + result.error);
         }
     } catch (error) {
-        alert('Error loading cart: ' + error);
+        console.log('Error loading cart: ' + error);
     }
 }
 
@@ -194,13 +193,13 @@ async function deleteCart(cartId, cartName) {
             const result = await response.json();
             
             if (result.success) {
-                alert(result.message);
+                console.log(result.message);
                 location.reload();
             } else {
-                alert('Error deleting cart: ' + result.error);
+                console.log('Error deleting cart: ' + result.error);
             }
         } catch (error) {
-            alert('Error deleting cart: ' + error);
+            console.log('Error deleting cart: ' + error);
         }
     }
 }
