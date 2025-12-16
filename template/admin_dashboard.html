@@ -126,25 +126,44 @@
         border: 2px solid #ddd;
         border-radius: 8px;
         font-size: 1rem;
+        transition: all 0.3s;
     }
     .search-input:focus {
         border-color: #4f46e5;
         outline: none;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
     }
 
-    .sale-row.hidden, .stock-row.hidden {
-        display: none;
+    .search-result-count {
+        background: #4f46e5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-left: 0.5rem;
     }
 
-    .no-results {
-        display: none;
-        text-align: center;
-        padding: 1.5rem;
-        color: #888;
+    .search-tips {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #4f46e5;
     }
-    .no-results.show {
-        display: table-row;
+
+    .badge {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        border-radius: 8px;
+        font-weight: 600;
+        display: inline-block;
     }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger  { background: #fee2e2; color: #b91c1c; }
 </style>
 
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
@@ -199,7 +218,10 @@
             </div>
         </div>
         
+        <!-- Hidden search fields to preserve search when changing date -->
         <input type="hidden" id="dateFilter" name="date_filter" value="{{ date_filter }}">
+        <input type="hidden" name="sales_search" value="{{ sales_search|default:'' }}">
+        <input type="hidden" name="stock_search" value="{{ stock_search|default:'' }}">
     </form>
     
     <div class="date-display">
@@ -270,15 +292,56 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Recent Sales</h2>
+        {% if sales_search %}
+        <span class="search-result-count">{{ recent_sales|length }} sale{{ recent_sales|length|pluralize }}</span>
+        {% endif %}
     </div>
     
     <!-- Search Bar for Recent Sales -->
     <div class="search-container">
-        <input id="salesSearchInput"
-               type="text"
-               class="search-input"
-               placeholder="Search by customer name, invoice number, or staff..."
-               autofocus>
+        <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
+            <!-- Keep all existing filter parameters -->
+            <input type="hidden" name="date_filter" value="{{ date_filter }}">
+            <input type="hidden" name="custom_start" value="{{ start_date|date:'Y-m-d' }}">
+            <input type="hidden" name="custom_end" value="{{ end_date|date:'Y-m-d' }}">
+            <input type="hidden" name="stock_search" value="{{ stock_search|default:'' }}">
+            
+            <div style="flex: 1; position: relative;">
+                <input type="text" 
+                       name="sales_search"
+                       class="search-input"
+                       placeholder="Search: 'J' for customers starting with J, 'John' for John, 'INV-001' for invoice..."
+                       value="{{ sales_search|default:'' }}"
+                       id="salesSearchInput">
+                
+                {% if sales_search %}
+                <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
+                    <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
+                        {{ recent_sales|length }} result{{ recent_sales|length|pluralize }}
+                    </small>
+                </div>
+                {% endif %}
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
+                Search
+            </button>
+            
+            {% if sales_search %}
+            <a href="?date_filter={{ date_filter }}&custom_start={{ start_date|date:'Y-m-d' }}&custom_end={{ end_date|date:'Y-m-d' }}&stock_search={{ stock_search|default:'' }}" 
+               class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
+                Clear
+            </a>
+            {% endif %}
+        </form>
+        
+        {% if sales_search %}
+        <div class="search-tips">
+            <small>
+                Search
+            </small>
+        </div>
+        {% endif %}
     </div>
     
     <table>
@@ -295,11 +358,7 @@
         </thead>
         <tbody id="salesTableBody">
             {% for sale in recent_sales %}
-            <tr class="sale-row"
-                data-name="{{ sale.customer_name|default:'walk-in'|lower }}"
-                data-invoice="{{ sale.invoice_number|lower }}"
-                data-staff="{{ sale.staff.first_name|lower }} {{ sale.staff.last_name|lower }}">
-
+            <tr>
                 <td><strong>{{ sale.invoice_number }}</strong></td>
                 <td>{{ sale.customer_name|default:"Walk-in" }}</td>
                 <td>{{ sale.staff.first_name }} {{ sale.staff.last_name }}</td>
@@ -322,30 +381,79 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="7" style="text-align: center; padding: 2rem;">No sales yet</td>
+                <td colspan="7" style="text-align: center; padding: 2rem;">
+                    {% if sales_search %}
+                    No sales found matching "{{ sales_search }}"
+                    {% else %}
+                    No sales yet
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
-
-            <tr id="noSalesResults" class="no-results">
-                <td colspan="7">No matching sales found.</td>
-            </tr>
         </tbody>
     </table>
+    
+    {% if sales_search and recent_sales|length >= 50 %}
+    <div style="padding: 1rem; text-align: center; color: #666; font-size: 0.9rem;">
+        Showing first 50 results. Use more specific search terms for better results.
+    </div>
+    {% endif %}
 </div>
 
 <!-- Low Stock Alert Section -->
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Low Stock Alert</h2>
+        {% if stock_search %}
+        <span class="search-result-count">{{ low_stock|length }} product{{ low_stock|length|pluralize }}</span>
+        {% endif %}
     </div>
     
     <!-- Search Bar for Low Stock -->
     <div class="search-container">
-        <input id="stockSearchInput"
-               type="text"
-               class="search-input"
-               placeholder="Search low stock products by name or SKU..."
-               autofocus>
+        <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
+            <!-- Keep all existing filter parameters -->
+            <input type="hidden" name="date_filter" value="{{ date_filter }}">
+            <input type="hidden" name="custom_start" value="{{ start_date|date:'Y-m-d' }}">
+            <input type="hidden" name="custom_end" value="{{ end_date|date:'Y-m-d' }}">
+            <input type="hidden" name="sales_search" value="{{ sales_search|default:'' }}">
+            
+            <div style="flex: 1; position: relative;">
+                <input type="text" 
+                       name="stock_search"
+                       class="search-input"
+                       placeholder="Search: 'M' for products starting with M, 'milk' for milk, 'PRD-' for SKU..."
+                       value="{{ stock_search|default:'' }}"
+                       id="stockSearchInput">
+                
+                {% if stock_search %}
+                <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
+                    <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
+                        {{ low_stock|length }} result{{ low_stock|length|pluralize }}
+                    </small>
+                </div>
+                {% endif %}
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
+                Search
+            </button>
+            
+            {% if stock_search %}
+            <a href="?date_filter={{ date_filter }}&custom_start={{ start_date|date:'Y-m-d' }}&custom_end={{ end_date|date:'Y-m-d' }}&sales_search={{ sales_search|default:'' }}" 
+               class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
+                Clear
+            </a>
+            {% endif %}
+        </form>
+        
+        {% if stock_search %}
+        <div class="search-tips">
+            <small>
+                Search 
+            </small>
+        </div>
+        {% endif %}
     </div>
     
     <table>
@@ -360,10 +468,7 @@
         </thead>
         <tbody id="stockTableBody">
             {% for product in low_stock %}
-            <tr class="stock-row"
-                data-name="{{ product.name|lower }}"
-                data-sku="{{ product.sku|lower }}">
-
+            <tr>
                 <td><strong>{{ product.name }}</strong></td>
                 <td>{{ product.sku }}</td>
                 <td><span class="badge badge-danger">{{ product.quantity }}</span></td>
@@ -376,15 +481,23 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="5" style="text-align: center; padding: 2rem;">All products are well stocked! 🎉</td>
+                <td colspan="5" style="text-align: center; padding: 2rem;">
+                    {% if stock_search %}
+                    No low stock products found matching "{{ stock_search }}"
+                    {% else %}
+                    All products are well stocked!
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
-
-            <tr id="noStockResults" class="no-results">
-                <td colspan="5">No matching low stock products found.</td>
-            </tr>
         </tbody>
     </table>
+    
+    {% if stock_search and low_stock|length >= 50 %}
+    <div style="padding: 1rem; text-align: center; color: #666; font-size: 0.9rem;">
+        Showing first 50 results. Use more specific search terms for better results.
+    </div>
+    {% endif %}
 </div>
 
 <script>
@@ -404,69 +517,33 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!document.getElementById('endDate').value) {
         document.getElementById('endDate').value = today;
     }
-});
-
-// Search functionality for recent sales
-document.addEventListener('DOMContentLoaded', () => {
+    
+    // Add keyboard shortcuts for search
     const salesSearchInput = document.getElementById('salesSearchInput');
-    const salesRows = document.querySelectorAll('.sale-row');
-    const noSalesResults = document.getElementById('noSalesResults');
-
-    salesSearchInput.addEventListener('input', () => {
-        const term = salesSearchInput.value.toLowerCase().trim();
-        let visible = 0;
-
-        salesRows.forEach(row => {
-            const matches =
-                row.dataset.name.startsWith(term) ||
-                row.dataset.invoice.startsWith(term) ||
-                row.dataset.staff.startsWith(term);
-
-            if (matches) {
-                row.classList.remove('hidden');
-                visible++;
-            } else {
-                row.classList.add('hidden');
-            }
-        });
-
-        noSalesResults.classList.toggle('show', visible === 0 && term !== "");
-    });
-
-    // Low Stock Search
     const stockSearchInput = document.getElementById('stockSearchInput');
-    const stockRows = document.querySelectorAll('.stock-row');
-    const noStockResults = document.getElementById('noStockResults');
-
-    stockSearchInput.addEventListener('input', () => {
-        const term = stockSearchInput.value.toLowerCase().trim();
-        let visible = 0;
-
-        stockRows.forEach(row => {
-            const matches =
-                row.dataset.name.startsWith(term) ||
-                row.dataset.sku.startsWith(term);
-
-            if (matches) {
-                row.classList.remove('hidden');
-                visible++;
-            } else {
-                row.classList.add('hidden');
+    
+    if (salesSearchInput) {
+        salesSearchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                this.closest('form').submit();
             }
         });
-
-        noStockResults.classList.toggle('show', visible === 0 && term !== "");
-    });
-
-    // Clear search with ESC
-    [salesSearchInput, stockSearchInput].forEach(input => {
-        input.addEventListener('keydown', e => {
-            if (e.key === "Escape") {
-                e.target.value = "";
-                e.target.dispatchEvent(new Event("input"));
+        
+        // Auto-focus if empty
+        if (!salesSearchInput.value) {
+            salesSearchInput.focus();
+        }
+    }
+    
+    if (stockSearchInput) {
+        stockSearchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                this.closest('form').submit();
             }
         });
-    });
+    }
 });
 </script>
 {% endblock %}

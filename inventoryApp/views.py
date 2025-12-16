@@ -2,12 +2,14 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
-from django.db.models import Q, Sum, F
+from django.db.models import Q, Sum, F, CharField, Value
+from django.db.models.functions import Concat
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal
 import json
+import re
 from django.views.decorators.csrf import csrf_protect
 
 from .models import (User, Product, Supplier, Category, Sale, SaleItem, 
@@ -20,7 +22,58 @@ def is_admin(user):
 def is_staff_or_admin(user):
     return user.is_authenticated and user.role in ['admin', 'staff', 'manager']
 
-# Authentication Views
+# ==================== SMART SEARCH HELPER FUNCTIONS ====================
+
+def parse_search_query(search_query):
+    """Parse search query into keywords and apply smart filtering logic"""
+    if not search_query:
+        return []
+    
+    # Split by spaces, commas, or multiple spaces
+    keywords = re.split(r'[,\s]+', search_query.strip())
+    
+    # Remove empty strings
+    keywords = [k.strip().lower() for k in keywords if k.strip()]
+    
+    return keywords
+
+def build_search_query(keywords, fields):
+    """Build Q objects for search with smart matching"""
+    if not keywords:
+        return Q()
+    
+    query = Q()
+    
+    for keyword in keywords:
+        keyword_query = Q()
+        
+        # Check if keyword is a single character (likely searching by first letter)
+        if len(keyword) == 1:
+            # Search for items starting with this letter
+            for field in fields:
+                keyword_query |= Q(**{f"{field}__istartswith": keyword})
+        else:
+            # For multi-character keywords, try multiple strategies
+            for field in fields:
+                # 1. Try exact match first (case-insensitive)
+                keyword_query |= Q(**{f"{field}__iexact": keyword})
+                
+                # 2. Try starts with
+                keyword_query |= Q(**{f"{field}__istartswith": keyword})
+                
+                # 3. Try contains (standard search)
+                keyword_query |= Q(**{f"{field}__icontains": keyword})
+        
+        # Add this keyword's query to the main query (AND logic between keywords)
+        if query:
+            query &= keyword_query
+        else:
+            query = keyword_query
+    
+    return query
+
+# ==================== AUTHENTICATION VIEWS ====================
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('home')
@@ -45,21 +98,45 @@ def logout_view(request):
     messages.success(request, 'You have been logged out successfully.')
     return redirect('login')
 
-# Home/POS View
+# ==================== HOME/POS VIEW ====================
+
 @login_required
 @user_passes_test(is_staff_or_admin)
 def home(request):
     return render(request, 'home.html')
 
-# Product Search API
+# ==================== PRODUCT SEARCH API ====================
+
 @login_required
 def search_products(request):
     query = request.GET.get('q', '')
     if query:
-        products = Product.objects.filter(
-            Q(name__icontains=query) | 
-            Q(description__icontains=query)
-        )[:20]
+        # Use smart search for product search in POS
+        keywords = parse_search_query(query)
+        
+        if keywords:
+            search_q = Q()
+            for keyword in keywords:
+                keyword_query = Q()
+                
+                if len(keyword) == 1:
+                    keyword_query |= Q(name__istartswith=keyword)
+                    keyword_query |= Q(sku__istartswith=keyword)
+                else:
+                    keyword_query |= Q(name__iexact=keyword)
+                    keyword_query |= Q(name__istartswith=keyword)
+                    keyword_query |= Q(name__icontains=keyword)
+                    keyword_query |= Q(sku__icontains=keyword)
+                    keyword_query |= Q(description__icontains=keyword)
+                
+                if search_q:
+                    search_q &= keyword_query
+                else:
+                    search_q = keyword_query
+            
+            products = Product.objects.filter(search_q)[:20]
+        else:
+            products = Product.objects.none()
         
         data = [{
             'id': p.id,
@@ -73,7 +150,8 @@ def search_products(request):
         return JsonResponse(data, safe=False)
     return JsonResponse([], safe=False)
 
-# Process Sale - UPDATED: Fix saved cart deletion
+# ==================== PROCESS SALE ====================
+
 @login_required
 def process_sale(request):
     if request.method == 'POST':
@@ -84,7 +162,7 @@ def process_sale(request):
             customer_phone = data.get('customer_phone', '').strip()
             amount_paid = Decimal(data.get('amount_paid', 0))
             payment_method = data.get('payment_method', 'cash')
-            saved_cart_id = data.get('saved_cart_id')  # Get saved cart ID if provided
+            saved_cart_id = data.get('saved_cart_id')
             
             if not items:
                 return JsonResponse({'success': False, 'error': 'No items in cart'})
@@ -195,12 +273,9 @@ def process_sale(request):
             # DELETE SAVED CART if this sale came from a saved cart
             if saved_cart_id:
                 try:
-                    # Delete the saved cart from database
                     deleted_count = SavedCart.objects.filter(id=saved_cart_id, staff=request.user).delete()
                     if deleted_count[0] > 0:
                         print(f"Saved cart ID {saved_cart_id} deleted successfully after sale")
-                    else:
-                        print(f"Saved cart ID {saved_cart_id} not found or already deleted")
                 except Exception as e:
                     print(f"Error deleting saved cart: {e}")
             
@@ -215,7 +290,8 @@ def process_sale(request):
     
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
-# Admin Dashboard
+# ==================== ADMIN DASHBOARD WITH SMART SEARCH ====================
+
 @login_required
 @user_passes_test(is_admin)
 def admin_dashboard(request):
@@ -223,6 +299,14 @@ def admin_dashboard(request):
     date_filter = request.GET.get('date_filter', 'today')
     custom_start = request.GET.get('custom_start')
     custom_end = request.GET.get('custom_end')
+    
+    # Get search queries
+    sales_search = request.GET.get('sales_search', '').strip()
+    stock_search = request.GET.get('stock_search', '').strip()
+    
+    # Parse search keywords
+    sales_keywords = parse_search_query(sales_search)
+    stock_keywords = parse_search_query(stock_search)
     
     # Calculate date range based on filter
     today = timezone.now().date()
@@ -271,11 +355,93 @@ def admin_dashboard(request):
     transfer_payments = payments_in_period.filter(payment_method='transfer').aggregate(Sum('amount'))['amount__sum'] or 0
     card_payments = payments_in_period.filter(payment_method='card').aggregate(Sum('amount'))['amount__sum'] or 0
     
-    # Recent sales (last 10 regardless of filter)
-    recent_sales = Sale.objects.select_related('staff').prefetch_related('items').order_by('-created_at')[:10]
+    # ==================== RECENT SALES WITH SMART SEARCH ====================
     
-    # Low stock alert
-    low_stock = Product.objects.filter(quantity__lte=F('reorder_level'))[:10]
+    recent_sales = Sale.objects.select_related('staff').prefetch_related('items').order_by('-created_at')
+    
+    if sales_keywords:
+        # Build search query for sales
+        search_query = build_search_query(sales_keywords, [
+            'customer_name',
+            'invoice_number',
+        ])
+        
+        # Also search in staff names
+        staff_name_query = Q()
+        for keyword in sales_keywords:
+            if len(keyword) == 1:
+                # Search by first letter of staff first or last name
+                staff_name_query |= Q(staff__first_name__istartswith=keyword)
+                staff_name_query |= Q(staff__last_name__istartswith=keyword)
+            else:
+                # Search anywhere in staff names
+                staff_name_query |= Q(staff__first_name__icontains=keyword)
+                staff_name_query |= Q(staff__last_name__icontains=keyword)
+        
+        # Combine both queries
+        combined_query = search_query | staff_name_query
+        
+        # For multiple keywords, ensure all are matched
+        if len(sales_keywords) > 1:
+            all_keywords_query = Q()
+            for keyword in sales_keywords:
+                single_keyword_query = Q()
+                single_keyword_query |= Q(customer_name__icontains=keyword)
+                single_keyword_query |= Q(invoice_number__icontains=keyword)
+                single_keyword_query |= Q(staff__first_name__icontains=keyword)
+                single_keyword_query |= Q(staff__last_name__icontains=keyword)
+                
+                if all_keywords_query:
+                    all_keywords_query &= single_keyword_query
+                else:
+                    all_keywords_query = single_keyword_query
+            
+            recent_sales = recent_sales.filter(all_keywords_query)[:50]
+        else:
+            recent_sales = recent_sales.filter(combined_query)[:50]
+    else:
+        recent_sales = recent_sales[:10]
+    
+    # ==================== LOW STOCK WITH SMART SEARCH ====================
+    
+    low_stock = Product.objects.filter(quantity__lte=F('reorder_level'))
+    
+    if stock_keywords:
+        # Build search query for products
+        search_query = build_search_query(stock_keywords, [
+            'name',
+            'sku',
+        ])
+        
+        # Also search in category names
+        category_query = Q()
+        for keyword in stock_keywords:
+            if len(keyword) == 1:
+                category_query |= Q(category__name__istartswith=keyword)
+            else:
+                category_query |= Q(category__name__icontains=keyword)
+        
+        combined_query = search_query | category_query
+        
+        # For multiple keywords, ensure all are matched
+        if len(stock_keywords) > 1:
+            all_keywords_query = Q()
+            for keyword in stock_keywords:
+                single_keyword_query = Q()
+                single_keyword_query |= Q(name__icontains=keyword)
+                single_keyword_query |= Q(sku__icontains=keyword)
+                single_keyword_query |= Q(category__name__icontains=keyword)
+                
+                if all_keywords_query:
+                    all_keywords_query &= single_keyword_query
+                else:
+                    all_keywords_query = single_keyword_query
+            
+            low_stock = low_stock.filter(all_keywords_query)[:50]
+        else:
+            low_stock = low_stock.filter(combined_query)[:50]
+    else:
+        low_stock = low_stock[:10]
     
     context = {
         'total_products': total_products,
@@ -292,10 +458,13 @@ def admin_dashboard(request):
         'start_date': start_date,
         'end_date': end_date,
         'today': today,
+        'sales_search': sales_search,
+        'stock_search': stock_search,
     }
     return render(request, 'admin_dashboard.html', context)
 
-# Staff Management
+# ==================== STAFF MANAGEMENT WITH SMART SEARCH ====================
+
 @login_required
 @user_passes_test(is_admin)
 def register_staff(request):
@@ -313,15 +482,155 @@ def register_staff(request):
 @login_required
 @user_passes_test(is_admin)
 def staff_list(request):
-    staff = User.objects.all().order_by('-date_joined')
-    return render(request, 'staff_list.html', {'staff': staff})
+    search_query = request.GET.get('search', '').strip()
+    keywords = parse_search_query(search_query)
+    
+    staff = User.objects.all()
+    
+    if keywords:
+        # Build smart search query
+        search_q = Q()
+        
+        for keyword in keywords:
+            keyword_query = Q()
+            
+            # Single character search (first letter)
+            if len(keyword) == 1:
+                keyword_query |= Q(username__istartswith=keyword)
+                keyword_query |= Q(first_name__istartswith=keyword)
+                keyword_query |= Q(last_name__istartswith=keyword)
+                keyword_query |= Q(email__istartswith=keyword)
+                keyword_query |= Q(role__istartswith=keyword)
+            else:
+                # Multi-character keyword
+                # Try exact match for role
+                keyword_query |= Q(role__iexact=keyword)
+                
+                # Try starts with
+                keyword_query |= Q(username__istartswith=keyword)
+                keyword_query |= Q(first_name__istartswith=keyword)
+                keyword_query |= Q(last_name__istartswith=keyword)
+                keyword_query |= Q(email__istartswith=keyword)
+                
+                # Try contains
+                keyword_query |= Q(username__icontains=keyword)
+                keyword_query |= Q(first_name__icontains=keyword)
+                keyword_query |= Q(last_name__icontains=keyword)
+                keyword_query |= Q(email__icontains=keyword)
+                keyword_query |= Q(role__icontains=keyword)
+            
+            # Add to main query
+            if search_q:
+                search_q &= keyword_query
+            else:
+                search_q = keyword_query
+        
+        # If multiple keywords, ensure all are matched somewhere
+        if len(keywords) > 1:
+            all_keywords_query = Q()
+            for keyword in keywords:
+                single_keyword_query = Q()
+                single_keyword_query |= Q(username__icontains=keyword)
+                single_keyword_query |= Q(first_name__icontains=keyword)
+                single_keyword_query |= Q(last_name__icontains=keyword)
+                single_keyword_query |= Q(email__icontains=keyword)
+                single_keyword_query |= Q(role__icontains=keyword)
+                
+                if all_keywords_query:
+                    all_keywords_query &= single_keyword_query
+                else:
+                    all_keywords_query = single_keyword_query
+            
+            staff = staff.filter(all_keywords_query)
+        else:
+            staff = staff.filter(search_q)
+    
+    staff = staff.order_by('-date_joined')
+    
+    return render(request, 'staff_list.html', {
+        'staff': staff,
+        'search_query': search_query
+    })
 
-# Product Management
+# ==================== PRODUCT MANAGEMENT WITH SMART SEARCH ====================
+
 @login_required
 @user_passes_test(is_admin)
 def product_list(request):
+    search_query = request.GET.get('search', '').strip()
+    keywords = parse_search_query(search_query)
+    
     products = Product.objects.select_related('category', 'supplier').all()
-    return render(request, 'product_list.html', {'products': products})
+    
+    if keywords:
+        # Build smart search query
+        search_q = Q()
+        
+        for keyword in keywords:
+            keyword_query = Q()
+            
+            # Single character search
+            if len(keyword) == 1:
+                keyword_query |= Q(name__istartswith=keyword)
+                keyword_query |= Q(sku__istartswith=keyword)
+            else:
+                # Multi-character keyword
+                # Try exact match
+                keyword_query |= Q(name__iexact=keyword)
+                keyword_query |= Q(sku__iexact=keyword)
+                
+                # Try starts with
+                keyword_query |= Q(name__istartswith=keyword)
+                keyword_query |= Q(sku__istartswith=keyword)
+                
+                # Try contains
+                keyword_query |= Q(name__icontains=keyword)
+                keyword_query |= Q(sku__icontains=keyword)
+                keyword_query |= Q(description__icontains=keyword)
+            
+            # Add to main query
+            if search_q:
+                search_q &= keyword_query
+            else:
+                search_q = keyword_query
+        
+        # Also search in category and supplier names
+        related_query = Q()
+        for keyword in keywords:
+            if len(keyword) == 1:
+                related_query |= Q(category__name__istartswith=keyword)
+                related_query |= Q(supplier__name__istartswith=keyword)
+            else:
+                related_query |= Q(category__name__icontains=keyword)
+                related_query |= Q(supplier__name__icontains=keyword)
+        
+        # Combine queries
+        combined_query = search_q | related_query
+        
+        # If multiple keywords, ensure all are matched
+        if len(keywords) > 1:
+            all_keywords_query = Q()
+            for keyword in keywords:
+                single_keyword_query = Q()
+                single_keyword_query |= Q(name__icontains=keyword)
+                single_keyword_query |= Q(sku__icontains=keyword)
+                single_keyword_query |= Q(description__icontains=keyword)
+                single_keyword_query |= Q(category__name__icontains=keyword)
+                single_keyword_query |= Q(supplier__name__icontains=keyword)
+                
+                if all_keywords_query:
+                    all_keywords_query &= single_keyword_query
+                else:
+                    all_keywords_query = single_keyword_query
+            
+            products = products.filter(all_keywords_query)
+        else:
+            products = products.filter(combined_query)
+    
+    return render(request, 'product_list.html', {
+        'products': products,
+        'search_query': search_query
+    })
 
 @login_required
 @user_passes_test(is_admin)
@@ -362,12 +671,89 @@ def delete_product(request, pk):
         return redirect('product_list')
     return render(request, 'product_confirm_delete.html', {'product': product})
 
-# Debtor Management
+# ==================== DEBTOR MANAGEMENT WITH SMART SEARCH ====================
+
 @login_required
 @user_passes_test(is_staff_or_admin)
 def debtors_list(request):
-    debtors = Sale.objects.filter(balance__gt=0).select_related('staff').prefetch_related('payments').order_by('-created_at')
-    return render(request, 'debtors_list.html', {'debtors': debtors})
+    search_query = request.GET.get('search', '').strip()
+    keywords = parse_search_query(search_query)
+    
+    debtors = Sale.objects.filter(balance__gt=0).select_related('staff').prefetch_related('payments')
+    
+    if keywords:
+        # Build smart search query
+        search_q = Q()
+        
+        for keyword in keywords:
+            keyword_query = Q()
+            
+            # Single character search
+            if len(keyword) == 1:
+                keyword_query |= Q(customer_name__istartswith=keyword)
+                keyword_query |= Q(customer_phone__istartswith=keyword)
+                keyword_query |= Q(invoice_number__istartswith=keyword)
+            else:
+                # Multi-character keyword
+                # Try exact match
+                keyword_query |= Q(customer_name__iexact=keyword)
+                keyword_query |= Q(invoice_number__iexact=keyword)
+                
+                # Try starts with
+                keyword_query |= Q(customer_name__istartswith=keyword)
+                keyword_query |= Q(customer_phone__istartswith=keyword)
+                keyword_query |= Q(invoice_number__istartswith=keyword)
+                
+                # Try contains
+                keyword_query |= Q(customer_name__icontains=keyword)
+                keyword_query |= Q(customer_phone__icontains=keyword)
+                keyword_query |= Q(invoice_number__icontains=keyword)
+            
+            # Add to main query
+            if search_q:
+                search_q &= keyword_query
+            else:
+                search_q = keyword_query
+        
+        # Also search in staff names
+        staff_query = Q()
+        for keyword in keywords:
+            if len(keyword) == 1:
+                staff_query |= Q(staff__first_name__istartswith=keyword)
+                staff_query |= Q(staff__last_name__istartswith=keyword)
+            else:
+                staff_query |= Q(staff__first_name__icontains=keyword)
+                staff_query |= Q(staff__last_name__icontains=keyword)
+        
+        # Combine queries
+        combined_query = search_q | staff_query
+        
+        # If multiple keywords, ensure all are matched
+        if len(keywords) > 1:
+            all_keywords_query = Q()
+            for keyword in keywords:
+                single_keyword_query = Q()
+                single_keyword_query |= Q(customer_name__icontains=keyword)
+                single_keyword_query |= Q(customer_phone__icontains=keyword)
+                single_keyword_query |= Q(invoice_number__icontains=keyword)
+                single_keyword_query |= Q(staff__first_name__icontains=keyword)
+                single_keyword_query |= Q(staff__last_name__icontains=keyword)
+                
+                if all_keywords_query:
+                    all_keywords_query &= single_keyword_query
+                else:
+                    all_keywords_query = single_keyword_query
+            
+            debtors = debtors.filter(all_keywords_query)
+        else:
+            debtors = debtors.filter(combined_query)
+    
+    debtors = debtors.order_by('-created_at')
+    
+    return render(request, 'debtors_list.html', {
+        'debtors': debtors,
+        'search_query': search_query
+    })
 
 @login_required
 @user_passes_test(is_staff_or_admin)
@@ -426,7 +812,8 @@ def record_payment(request, sale_id):
     
     return render(request, 'record_payment.html', {'form': form, 'sale': sale})
 
-# Payment History View
+# ==================== PAYMENT HISTORY VIEW ====================
+
 @login_required
 @user_passes_test(is_staff_or_admin)
 def debtor_payment_history(request, sale_id):
@@ -439,13 +826,13 @@ def debtor_payment_history(request, sale_id):
     }
     return render(request, 'debtor_payment_history.html', context)
 
-# Receipt Views
+# ==================== RECEIPT VIEWS ====================
+
 @login_required
 def view_receipt(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)
     return render(request, 'receipt.html', {'sale': sale})
 
-# Edit Receipt View
 @login_required
 def edit_receipt(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)
@@ -470,6 +857,8 @@ def edit_receipt(request, sale_id):
         return redirect('view_receipt', sale_id=sale.id)
     
     return render(request, 'edit_receipt.html', {'sale': sale})
+
+# ==================== EDIT STAFF ====================
 
 @login_required
 @user_passes_test(is_admin)
@@ -509,6 +898,8 @@ def edit_staff(request):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+# ==================== CART MANAGEMENT ====================
 
 @login_required
 @user_passes_test(is_staff_or_admin)
@@ -578,12 +969,84 @@ def delete_pending_cart(request):
     
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
+# ==================== SAVED CARTS WITH SMART SEARCH ====================
 
 @login_required
 @user_passes_test(is_staff_or_admin)
 def saved_carts_list(request):
-    saved_carts = SavedCart.objects.filter(staff=request.user).order_by('-created_at')
-    return render(request, 'saved_carts_list.html', {'saved_carts': saved_carts})
+    search_query = request.GET.get('search', '').strip()
+    keywords = parse_search_query(search_query)
+    
+    saved_carts = SavedCart.objects.filter(staff=request.user)
+    
+    if keywords:
+        # Build smart search query for cart names
+        search_q = Q()
+        
+        for keyword in keywords:
+            keyword_query = Q()
+            
+            # Single character search
+            if len(keyword) == 1:
+                keyword_query |= Q(cart_name__istartswith=keyword)
+            else:
+                # Multi-character keyword
+                keyword_query |= Q(cart_name__iexact=keyword)
+                keyword_query |= Q(cart_name__istartswith=keyword)
+                keyword_query |= Q(cart_name__icontains=keyword)
+            
+            # Add to main query
+            if search_q:
+                search_q &= keyword_query
+            else:
+                search_q = keyword_query
+        
+        # First filter by cart_name
+        saved_carts = saved_carts.filter(search_q)
+        
+        # If we have carts and keywords, also filter by customer name in cart_data
+        if saved_carts.exists() and keywords:
+            filtered_carts = []
+            for cart in saved_carts:
+                cart_data = cart.cart_data
+                include_cart = False
+                
+                # Check cart name (already filtered, but double-check)
+                cart_name_lower = cart.cart_name.lower()
+                
+                # Check all keywords
+                matches_all = True
+                for keyword in keywords:
+                    if len(keyword) == 1:
+                        # Check if cart name starts with this letter
+                        if not cart_name_lower.startswith(keyword):
+                            matches_all = False
+                            break
+                    else:
+                        # Check if keyword is in cart name
+                        if keyword not in cart_name_lower:
+                            # Also check customer name if available
+                            if 'customer_name' in cart_data and cart_data['customer_name']:
+                                customer_name = cart_data['customer_name'].lower()
+                                if keyword not in customer_name:
+                                    matches_all = False
+                                    break
+                            else:
+                                matches_all = False
+                                break
+                
+                if matches_all:
+                    filtered_carts.append(cart.id)
+            
+            # Filter queryset by IDs
+            saved_carts = saved_carts.filter(id__in=filtered_carts)
+    
+    saved_carts = saved_carts.order_by('-created_at')
+    
+    return render(request, 'saved_carts_list.html', {
+        'saved_carts': saved_carts,
+        'search_query': search_query
+    })
 
 @login_required
 @user_passes_test(is_staff_or_admin)
@@ -661,16 +1124,96 @@ def view_saved_cart(request, cart_id):
     saved_cart = get_object_or_404(SavedCart, id=cart_id, staff=request.user)
     return render(request, 'saved_cart_detail.html', {'saved_cart': saved_cart})
 
+# ==================== REFUND REQUESTS WITH SMART SEARCH ====================
+
 @login_required
 @user_passes_test(is_staff_or_admin)
 def refund_requests_list(request):
-    refund_requests = RefundRequest.objects.all().order_by('-request_date')
+    search_query = request.GET.get('search', '').strip()
+    keywords = parse_search_query(search_query)
+    
+    refund_requests = RefundRequest.objects.all()
+    
+    if keywords:
+        # Build smart search query
+        search_q = Q()
+        
+        for keyword in keywords:
+            keyword_query = Q()
+            
+            # Single character search
+            if len(keyword) == 1:
+                keyword_query |= Q(customer_name__istartswith=keyword)
+                keyword_query |= Q(customer_phone__istartswith=keyword)
+                keyword_query |= Q(status__istartswith=keyword)
+            else:
+                # Multi-character keyword
+                # Try exact match for status
+                keyword_query |= Q(status__iexact=keyword)
+                
+                # Try starts with
+                keyword_query |= Q(customer_name__istartswith=keyword)
+                keyword_query |= Q(customer_phone__istartswith=keyword)
+                keyword_query |= Q(reason__istartswith=keyword)
+                
+                # Try contains
+                keyword_query |= Q(customer_name__icontains=keyword)
+                keyword_query |= Q(customer_phone__icontains=keyword)
+                keyword_query |= Q(reason__icontains=keyword)
+                keyword_query |= Q(status__icontains=keyword)
+            
+            # Add to main query
+            if search_q:
+                search_q &= keyword_query
+            else:
+                search_q = keyword_query
+        
+        # Also search in created_by user names
+        user_query = Q()
+        for keyword in keywords:
+            if len(keyword) == 1:
+                user_query |= Q(created_by__first_name__istartswith=keyword)
+                user_query |= Q(created_by__last_name__istartswith=keyword)
+                user_query |= Q(created_by__username__istartswith=keyword)
+            else:
+                user_query |= Q(created_by__first_name__icontains=keyword)
+                user_query |= Q(created_by__last_name__icontains=keyword)
+                user_query |= Q(created_by__username__icontains=keyword)
+        
+        combined_query = search_q | user_query
+        
+        # If multiple keywords, ensure all are matched
+        if len(keywords) > 1:
+            all_keywords_query = Q()
+            for keyword in keywords:
+                single_keyword_query = Q()
+                single_keyword_query |= Q(customer_name__icontains=keyword)
+                single_keyword_query |= Q(customer_phone__icontains=keyword)
+                single_keyword_query |= Q(reason__icontains=keyword)
+                single_keyword_query |= Q(status__icontains=keyword)
+                single_keyword_query |= Q(created_by__first_name__icontains=keyword)
+                single_keyword_query |= Q(created_by__last_name__icontains=keyword)
+                single_keyword_query |= Q(created_by__username__icontains=keyword)
+                
+                if all_keywords_query:
+                    all_keywords_query &= single_keyword_query
+                else:
+                    all_keywords_query = single_keyword_query
+            
+            refund_requests = refund_requests.filter(all_keywords_query)
+        else:
+            refund_requests = refund_requests.filter(combined_query)
     
     # Staff can only see their own requests, admin can see all
     if request.user.role != 'admin' and not request.user.is_superuser:
         refund_requests = refund_requests.filter(created_by=request.user)
     
-    return render(request, 'refund_requests_list.html', {'refund_requests': refund_requests})
+    refund_requests = refund_requests.order_by('-request_date')
+    
+    return render(request, 'refund_requests_list.html', {
+        'refund_requests': refund_requests,
+        'search_query': search_query
+    })
 
 @login_required
 @user_passes_test(is_staff_or_admin)
@@ -747,3 +1290,77 @@ def decline_refund_request(request, pk):
     
     messages.success(request, f'Refund request #{refund_request.id} declined.')
     return redirect('refund_requests_list')
+
+# ==================== SEARCH SUGGESTIONS API ====================
+
+@login_required
+def search_suggestions(request):
+    """Return search suggestions for auto-complete"""
+    query = request.GET.get('q', '').strip().lower()
+    model_type = request.GET.get('type', '')
+    
+    if not query or len(query) < 1:
+        return JsonResponse({'suggestions': []})
+    
+    suggestions = []
+    
+    if model_type == 'products':
+        # Product suggestions
+        products = Product.objects.filter(
+            Q(name__istartswith=query) |
+            Q(sku__istartswith=query)
+        )[:10]
+        
+        for p in products:
+            suggestions.append({
+                'text': f"{p.name} ({p.sku}) - ₦{p.price}",
+                'value': p.name,
+                'type': 'product'
+            })
+    
+    elif model_type == 'customers':
+        # Customer suggestions from sales
+        customers = Sale.objects.filter(
+            Q(customer_name__istartswith=query) |
+            Q(customer_name__icontains=query)
+        ).exclude(customer_name='').exclude(customer_name='Walk-in Customer').values_list('customer_name', flat=True).distinct()[:10]
+        
+        for name in customers:
+            if name:
+                suggestions.append({
+                    'text': f"Customer: {name}",
+                    'value': name,
+                    'type': 'customer'
+                })
+    
+    elif model_type == 'invoices':
+        # Invoice suggestions
+        invoices = Sale.objects.filter(
+            Q(invoice_number__istartswith=query) |
+            Q(invoice_number__icontains=query)
+        ).values_list('invoice_number', flat=True).distinct()[:10]
+        
+        for inv in invoices:
+            suggestions.append({
+                'text': f"Invoice: {inv}",
+                'value': inv,
+                'type': 'invoice'
+            })
+    
+    elif model_type == 'staff':
+        # Staff suggestions
+        staff_members = User.objects.filter(
+            Q(first_name__istartswith=query) |
+            Q(last_name__istartswith=query) |
+            Q(username__istartswith=query) |
+            Q(email__istartswith=query)
+        )[:10]
+        
+        for s in staff_members:
+            suggestions.append({
+                'text': f"{s.first_name} {s.last_name} ({s.username}) - {s.role}",
+                'value': f"{s.first_name} {s.last_name}",
+                'type': 'staff'
+            })
+    
+    return JsonResponse({'suggestions': suggestions})

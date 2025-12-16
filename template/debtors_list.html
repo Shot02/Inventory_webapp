@@ -45,11 +45,41 @@
 
 <!-- Search Bar -->
 <div class="search-container">
-    <input id="debtorSearchInput"
-           type="text"
-           class="search-input"
-           placeholder="Search by customer name, phone, or invoice number..."
-           autofocus>
+    <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
+        <div style="flex: 1; position: relative;">
+            <input type="text" 
+                   name="search"
+                   class="search-input"
+                   placeholder="Search: 'A' for customers starting with A, 'John' for John, '080' for phone..."
+                   value="{{ search_query|default:'' }}">
+            
+            {% if search_query %}
+            <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
+                <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
+                    {{ debtors|length }} result{{ debtors|length|pluralize }}
+                </small>
+            </div>
+            {% endif %}
+        </div>
+        
+        <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
+            Search
+        </button>
+        
+        {% if search_query %}
+        <a href="{% url 'debtors_list' %}" class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
+            Clear
+        </a>
+        {% endif %}
+    </form>
+    
+    {% if search_query %}
+    <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;">
+        <small>
+            search
+        </small>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -66,13 +96,9 @@
                 <th>Actions</th>
             </tr>
         </thead>
-        <tbody id="debtorTableBody">
+        <tbody>
             {% for sale in debtors %}
-            <tr class="debtor-row"
-                data-name="{{ sale.customer_name|default:'walk-in'|lower }}"
-                data-phone="{{ sale.customer_phone|default:''|lower }}"
-                data-invoice="{{ sale.invoice_number|lower }}">
-
+            <tr>
                 <td><strong>{{ sale.invoice_number }}</strong></td>
                 <td>{{ sale.customer_name|default:"Walk-in" }}</td>
                 <td>{{ sale.customer_phone|default:"-" }}</td>
@@ -82,7 +108,7 @@
                 <td>{{ sale.created_at|date:"M d, Y" }}</td>
                 <td>
                     <a href="{% url 'record_payment' sale.id %}" class="btn btn-success" style="padding: 0.4rem 0.8rem;">
-                         Record Payment
+                        Record Payment
                     </a>
                     <a href="{% url 'view_receipt' sale.id %}" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
                         📄 View
@@ -91,11 +117,7 @@
             </tr>
             
             {% if sale.payments.all %}
-            <tr class="debtor-row payment-history"
-                data-name="{{ sale.customer_name|default:'walk-in'|lower }}"
-                data-phone="{{ sale.customer_phone|default:''|lower }}"
-                data-invoice="{{ sale.invoice_number|lower }}"
-                style="background: #f8f9fa;">
+            <tr style="background: #f8f9fa;">
                 <td colspan="8" style="padding-left: 3rem;">
                     <strong>Payment History:</strong><br>
                     {% for payment in sale.payments.all %}
@@ -112,14 +134,14 @@
             {% empty %}
             <tr>
                 <td colspan="8" style="text-align: center; padding: 2rem;">
+                    {% if search_query %}
+                    No debtors found matching "{{ search_query }}"
+                    {% else %}
                     No outstanding debts! 
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
-
-            <tr id="noResultsRow" class="no-results">
-                <td colspan="8">🔍 No matching debtors found.</td>
-            </tr>
         </tbody>
     </table>
 </div>

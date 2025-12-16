@@ -60,11 +60,41 @@
 
 <!-- Search Bar -->
 <div class="search-container">
-    <input id="productSearchInput"
-           type="text"
-           class="search-input"
-           placeholder="Search by name, SKU, or category..."
-           autofocus>
+    <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
+        <div style="flex: 1; position: relative;">
+            <input type="text" 
+                   name="search"
+                   class="search-input"
+                   placeholder="Search: 'P' for products starting with P, 'milk' for milk, 'SKU-001' for SKU..."
+                   value="{{ search_query|default:'' }}">
+            
+            {% if search_query %}
+            <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
+                <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
+                    {{ products|length }} product{{ products|length|pluralize }}
+                </small>
+            </div>
+            {% endif %}
+        </div>
+        
+        <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
+            Search
+        </button>
+        
+        {% if search_query %}
+        <a href="{% url 'product_list' %}" class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
+            Clear
+        </a>
+        {% endif %}
+    </form>
+    
+    {% if search_query %}
+    <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;">
+        <small>
+            search
+        </small>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card p-3">
