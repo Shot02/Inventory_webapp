@@ -3,7 +3,7 @@
 {% block title %}Record Payment{% endblock %}
 
 {% block content %}
-<h1> Record Payment for Invoice {{ sale.invoice_number }}</h1>
+<h1>Record Payment for Invoice {{ sale.invoice_number }}</h1>
 
 <div class="card">
     <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
@@ -20,72 +20,90 @@
         
         <div class="form-group">
             <label>Payment Amount *</label>
-            {{ form.amount }}
+            <input type="number" name="amount" class="form-control" 
+                   step="0.01" min="0.01" max="{{ sale.balance|floatformat:2 }}" 
+                   placeholder="Enter payment amount" required>
             <small style="color: #666;">Maximum: ₦{{ sale.balance|floatformat:2 }}</small>
         </div>
         
         <div class="form-group">
             <label>Payment Method *</label>
-            {{ form.payment_method }}
+            <select name="payment_method" class="form-control" required>
+                <option value="cash" selected>Cash</option>
+                <option value="transfer">Bank Transfer</option>
+                <option value="card">Card</option>
+            </select>
         </div>
         
         <div class="form-group">
             <label>Reference Number</label>
-            {{ form.reference }}
+            <input type="text" name="reference" class="form-control" 
+                   placeholder="Optional reference number">
         </div>
         
         <div class="form-group">
             <label>Notes</label>
-            {{ form.notes }}
+            <textarea name="notes" class="form-control" rows="3" 
+                      placeholder="Optional notes about this payment"></textarea>
         </div>
         
         <div style="display: flex; gap: 1rem;">
-            <button type="submit" class="btn btn-success" id="submitBtn"> Record Payment</button>
-            <a href="{% url 'debtors_list' %}" class="btn btn-danger"> Cancel</a>
+            <button type="submit" class="btn btn-success" id="submitBtn">Record Payment</button>
+            <a href="{% url 'debtors_list' %}" class="btn btn-danger">Cancel</a>
         </div>
     </form>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Set max amount for payment
-    const amountInput = document.querySelector('#id_amount');
-    if (amountInput) {
-        amountInput.setAttribute('max', '{{ sale.balance }}');
-        amountInput.setAttribute('step', '0.01');
-    }
+    const form = document.getElementById('paymentForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const amountInput = form.querySelector('input[name="amount"]');
     
-    // Handle form submission
-    document.getElementById('paymentForm').addEventListener('submit', function(e) {
+    // Set focus on amount input
+    amountInput.focus();
+    
+    // Validate amount on input
+    amountInput.addEventListener('input', function() {
+        const maxAmount = parseFloat('{{ sale.balance }}');
+        const enteredAmount = parseFloat(this.value) || 0;
+        
+        if (enteredAmount > maxAmount) {
+            this.value = maxAmount.toFixed(2);
+        }
+        
+        if (enteredAmount <= 0) {
+            submitBtn.disabled = true;
+        } else {
+            submitBtn.disabled = false;
+        }
+    });
+    
+    // Form submission
+    form.addEventListener('submit', function(e) {
         e.preventDefault();
         
-        const submitBtn = document.getElementById('submitBtn');
+        const amount = parseFloat(amountInput.value) || 0;
+        const maxAmount = parseFloat('{{ sale.balance }}');
+        
+        if (amount <= 0) {
+            alert('Please enter a valid payment amount (greater than 0).');
+            amountInput.focus();
+            return;
+        }
+        
+        if (amount > maxAmount) {
+            alert('Payment amount cannot exceed the outstanding balance of ₦' + maxAmount.toFixed(2));
+            amountInput.focus();
+            return;
+        }
+        
+        // Disable button to prevent double submission
         submitBtn.disabled = true;
         submitBtn.innerHTML = 'Processing...';
         
-        const formData = new FormData(this);
-        
-        fetch('', {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Redirect to receipt view after successful payment
-                window.location.href = "{% url 'view_receipt' sale.id %}";
-            } else {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Record Payment';
-            }
-        })
-        .catch(error => {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Record Payment';
-        });
+        // Submit form normally
+        this.submit();
     });
 });
 </script>

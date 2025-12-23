@@ -10,52 +10,60 @@
         <form method="post">
             {% csrf_token %}
             
+            {% if form.errors %}
+            <div class="alert alert-error" style="margin-bottom: 1rem;">
+                <strong>Please fix the following errors:</strong>
+                <ul style="margin: 0.5rem 0 0 1rem;">
+                    {% for field, errors in form.errors.items %}
+                        {% for error in errors %}
+                            <li>{{ field|title }}: {{ error }}</li>
+                        {% endfor %}
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                 <div class="form-group">
                     <label>Customer Name *</label>
-                    {{ form.customer_name }}
-                    {% if form.customer_name.errors %}
-                    <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
-                        {{ form.customer_name.errors }}
-                    </div>
-                    {% endif %}
+                    <input type="text" name="customer_name" class="form-control" 
+                           value="{{ form.customer_name.value|default:'' }}" required>
                 </div>
                 
                 <div class="form-group">
                     <label>Customer Phone *</label>
-                    {{ form.customer_phone }}
-                    {% if form.customer_phone.errors %}
-                    <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
-                        {{ form.customer_phone.errors }}
-                    </div>
-                    {% endif %}
+                    <input type="tel" name="customer_phone" class="form-control" 
+                           value="{{ form.customer_phone.value|default:'' }}" required>
                 </div>
             </div>
             
             <div class="form-group">
                 <label>Reason for Refund *</label>
-                {{ form.reason }}
-                {% if form.reason.errors %}
-                <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
-                    {{ form.reason.errors }}
-                </div>
-                {% endif %}
+                <textarea name="reason" class="form-control" rows="4" required>{{ form.reason.value|default:'' }}</textarea>
             </div>
             
             <div class="form-group">
                 <label>Refund Amount (₦) *</label>
-                {{ form.amount }}
-                {% if form.amount.errors %}
-                <div style="color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem;">
-                    {{ form.amount.errors }}
-                </div>
-                {% endif %}
+                <input type="number" name="amount" class="form-control" 
+                       step="0.01" min="0.01" 
+                       value="{{ form.amount.value|default:'' }}" required>
             </div>
             
+            {% if refund_request %}
             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <p><strong>Request Date:</strong> {% if refund_request %}{{ refund_request.request_date|date:"M d, Y H:i" }}{% else %}{{ current_time|date:"M d, Y H:i" }}{% endif %}</p>
-                <p><strong>Status:</strong> {% if refund_request %}{{ refund_request.get_status_display }}{% else %}Pending{% endif %}</p>
+                <p><strong>Request Date:</strong> {{ refund_request.request_date|date:"M d, Y H:i" }}</p>
+                <p><strong>Status:</strong> 
+                    {% if refund_request.status == 'pending' %}
+                    <span style="background: #fef3c7; color: #92400e; padding: 0.2rem 0.5rem; border-radius: 4px;">Pending</span>
+                    {% elif refund_request.status == 'approved' %}
+                    <span style="background: #d1fae5; color: #065f46; padding: 0.2rem 0.5rem; border-radius: 4px;">Approved</span>
+                    {% else %}
+                    <span style="background: #fee2e2; color: #b91c1c; padding: 0.2rem 0.5rem; border-radius: 4px;">Declined</span>
+                    {% endif %}
+                </p>
+                <p><strong>Created By:</strong> {{ refund_request.created_by.get_full_name|default:refund_request.created_by.username }}</p>
             </div>
+            {% endif %}
             
             <div style="display: flex; gap: 1rem;">
                 <button type="submit" class="btn btn-success" style="flex: 1;">
@@ -66,4 +74,66 @@
         </form>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const amountInput = document.querySelector('input[name="amount"]');
+    const customerNameInput = document.querySelector('input[name="customer_name"]');
+    
+    // Set focus on first field
+    if (customerNameInput) {
+        customerNameInput.focus();
+    }
+    
+    // Validate amount on input
+    if (amountInput) {
+        amountInput.addEventListener('input', function() {
+            const value = parseFloat(this.value) || 0;
+            if (value <= 0) {
+                this.setCustomValidity('Amount must be greater than 0');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+    }
+    
+    // Form validation
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const amount = parseFloat(amountInput.value) || 0;
+        const customerName = customerNameInput.value.trim();
+        const customerPhone = document.querySelector('input[name="customer_phone"]').value.trim();
+        const reason = document.querySelector('textarea[name="reason"]').value.trim();
+        
+        if (!customerName) {
+            e.preventDefault();
+            customerNameInput.focus();
+            return;
+        }
+        
+        if (!customerPhone) {
+            e.preventDefault();
+            document.querySelector('input[name="customer_phone"]').focus();
+            return;
+        }
+        
+        if (!reason) {
+            e.preventDefault();
+            document.querySelector('textarea[name="reason"]').focus();
+            return;
+        }
+        
+        if (amount <= 0) {
+            e.preventDefault();
+            amountInput.focus();
+            return;
+        }
+        
+        // Disable submit button to prevent double submission
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Processing...';
+    });
+});
+</script>
 {% endblock %}

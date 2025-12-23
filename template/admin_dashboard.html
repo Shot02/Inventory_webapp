@@ -135,15 +135,18 @@
     }
 
     .search-result-count {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
         background: #4f46e5;
         color: white;
         padding: 0.25rem 0.75rem;
         border-radius: 12px;
         font-size: 0.85rem;
         font-weight: 600;
-        margin-left: 0.5rem;
     }
-
+    
     .search-tips {
         margin-top: 0.5rem;
         font-size: 0.85rem;
@@ -153,17 +156,18 @@
         border-radius: 6px;
         border-left: 3px solid #4f46e5;
     }
-
-    .badge {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.75rem;
-        border-radius: 8px;
-        font-weight: 600;
-        display: inline-block;
+    
+    .limit-warning {
+        background: #fff3cd;
+        color: #856404;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
-    .badge-success { background: #d1fae5; color: #065f46; }
-    .badge-warning { background: #fef3c7; color: #92400e; }
-    .badge-danger  { background: #fee2e2; color: #b91c1c; }
 </style>
 
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
@@ -261,7 +265,6 @@
         <div class="value">{{ debtors_count }}</div>
     </div>
     
-    <!-- NEW: Payment Method Statistics -->
     <div class="stat-card purple">
         <h3>Cash Payments</h3>
         <div class="value">₦{{ cash_payments|floatformat:2 }}</div>
@@ -292,56 +295,25 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Recent Sales</h2>
-        {% if sales_search %}
-        <span class="search-result-count">{{ recent_sales|length }} sale{{ recent_sales|length|pluralize }}</span>
-        {% endif %}
+        <div id="salesSearchResultCount"></div>
     </div>
     
     <!-- Search Bar for Recent Sales -->
     <div class="search-container">
-        <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
-            <!-- Keep all existing filter parameters -->
-            <input type="hidden" name="date_filter" value="{{ date_filter }}">
-            <input type="hidden" name="custom_start" value="{{ start_date|date:'Y-m-d' }}">
-            <input type="hidden" name="custom_end" value="{{ end_date|date:'Y-m-d' }}">
-            <input type="hidden" name="stock_search" value="{{ stock_search|default:'' }}">
-            
-            <div style="flex: 1; position: relative;">
-                <input type="text" 
-                       name="sales_search"
-                       class="search-input"
-                       placeholder="Search: 'J' for customers starting with J, 'John' for John, 'INV-001' for invoice..."
-                       value="{{ sales_search|default:'' }}"
-                       id="salesSearchInput">
-                
-                {% if sales_search %}
-                <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
-                    <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
-                        {{ recent_sales|length }} result{{ recent_sales|length|pluralize }}
-                    </small>
-                </div>
-                {% endif %}
-            </div>
-            
-            <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
-                Search
-            </button>
-            
-            {% if sales_search %}
-            <a href="?date_filter={{ date_filter }}&custom_start={{ start_date|date:'Y-m-d' }}&custom_end={{ end_date|date:'Y-m-d' }}&stock_search={{ stock_search|default:'' }}" 
-               class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
-                Clear
-            </a>
-            {% endif %}
-        </form>
+        <div style="position: relative;">
+            <input type="text" 
+                   class="search-input"
+                   id="salesSearchInput"
+                   placeholder="Type to search sales... (invoice, customer, staff)"
+                   value="{{ sales_search|default:'' }}">
+            <div id="salesSearchCount" class="search-result-count" style="display: none;"></div>
+        </div>
         
-        {% if sales_search %}
         <div class="search-tips">
             <small>
-                Search
+                <strong>Search:</strong> Type invoice number, customer name, phone, or staff username
             </small>
         </div>
-        {% endif %}
     </div>
     
     <table>
@@ -382,78 +354,37 @@
             {% empty %}
             <tr>
                 <td colspan="7" style="text-align: center; padding: 2rem;">
-                    {% if sales_search %}
-                    No sales found matching "{{ sales_search }}"
-                    {% else %}
                     No sales yet
-                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    
-    {% if sales_search and recent_sales|length >= 50 %}
-    <div style="padding: 1rem; text-align: center; color: #666; font-size: 0.9rem;">
-        Showing first 50 results. Use more specific search terms for better results.
-    </div>
-    {% endif %}
 </div>
 
 <!-- Low Stock Alert Section -->
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Low Stock Alert</h2>
-        {% if stock_search %}
-        <span class="search-result-count">{{ low_stock|length }} product{{ low_stock|length|pluralize }}</span>
-        {% endif %}
+        <div id="stockSearchResultCount"></div>
     </div>
     
     <!-- Search Bar for Low Stock -->
     <div class="search-container">
-        <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
-            <!-- Keep all existing filter parameters -->
-            <input type="hidden" name="date_filter" value="{{ date_filter }}">
-            <input type="hidden" name="custom_start" value="{{ start_date|date:'Y-m-d' }}">
-            <input type="hidden" name="custom_end" value="{{ end_date|date:'Y-m-d' }}">
-            <input type="hidden" name="sales_search" value="{{ sales_search|default:'' }}">
-            
-            <div style="flex: 1; position: relative;">
-                <input type="text" 
-                       name="stock_search"
-                       class="search-input"
-                       placeholder="Search: 'M' for products starting with M, 'milk' for milk, 'PRD-' for SKU..."
-                       value="{{ stock_search|default:'' }}"
-                       id="stockSearchInput">
-                
-                {% if stock_search %}
-                <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
-                    <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
-                        {{ low_stock|length }} result{{ low_stock|length|pluralize }}
-                    </small>
-                </div>
-                {% endif %}
-            </div>
-            
-            <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
-                Search
-            </button>
-            
-            {% if stock_search %}
-            <a href="?date_filter={{ date_filter }}&custom_start={{ start_date|date:'Y-m-d' }}&custom_end={{ end_date|date:'Y-m-d' }}&sales_search={{ sales_search|default:'' }}" 
-               class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
-                Clear
-            </a>
-            {% endif %}
-        </form>
+        <div style="position: relative;">
+            <input type="text" 
+                   class="search-input"
+                   id="stockSearchInput"
+                   placeholder="Type to search low stock products... (name, SKU, category)"
+                   value="{{ stock_search|default:'' }}">
+            <div id="stockSearchCount" class="search-result-count" style="display: none;"></div>
+        </div>
         
-        {% if stock_search %}
         <div class="search-tips">
             <small>
-                Search 
+                <strong>Search:</strong> Type product name, SKU, or category
             </small>
         </div>
-        {% endif %}
     </div>
     
     <table>
@@ -482,22 +413,12 @@
             {% empty %}
             <tr>
                 <td colspan="5" style="text-align: center; padding: 2rem;">
-                    {% if stock_search %}
-                    No low stock products found matching "{{ stock_search }}"
-                    {% else %}
                     All products are well stocked!
-                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    
-    {% if stock_search and low_stock|length >= 50 %}
-    <div style="padding: 1rem; text-align: center; color: #666; font-size: 0.9rem;">
-        Showing first 50 results. Use more specific search terms for better results.
-    </div>
-    {% endif %}
 </div>
 
 <script>
@@ -507,40 +428,187 @@ function setDateFilter(filter) {
     document.getElementById('dateFilterForm').submit();
 }
 
-// Set max date for date inputs to today
-document.addEventListener('DOMContentLoaded', function() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('startDate').max = today;
-    document.getElementById('endDate').max = today;
+// Real-time search function
+let debounceTimer;
+
+function debounceSearch(type, value) {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+        performRealTimeSearch(type, value);
+    }, 300);
+}
+
+async function performRealTimeSearch(type, searchTerm) {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const dateFilter = urlParams.get('date_filter') || '{{ date_filter }}';
+        const customStart = urlParams.get('custom_start') || '{{ start_date|date:"Y-m-d" }}';
+        const customEnd = urlParams.get('custom_end') || '{{ end_date|date:"Y-m-d" }}';
+        
+        let searchUrl = `/api/search/${type}/?q=${encodeURIComponent(searchTerm)}`;
+        searchUrl += `&date_filter=${dateFilter}`;
+        searchUrl += `&custom_start=${customStart}`;
+        searchUrl += `&custom_end=${customEnd}`;
+        
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+        
+        if (data.success) {
+            updateTable(type, data.results);
+            updateSearchCount(type, data.count, data.limited);
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+    }
+}
+
+function updateTable(type, results) {
+    const tableBody = document.getElementById(type + 'TableBody');
     
-    // Set default end date to today if not set
-    if (!document.getElementById('endDate').value) {
-        document.getElementById('endDate').value = today;
+    if (type === 'sales') {
+        tableBody.innerHTML = '';
+        
+        if (results.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 2rem;">
+                        No sales found
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        results.forEach(sale => {
+            const paymentBadge = sale.payment_status === 'paid' ? 
+                '<span class="badge badge-success">Paid</span>' : 
+                sale.payment_status === 'partial' ? 
+                '<span class="badge badge-warning">Partial</span>' : 
+                '<span class="badge badge-danger">Unpaid</span>';
+            
+            const date = new Date(sale.created_at);
+            const formattedDate = date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            const row = `
+                <tr>
+                    <td><strong>${sale.invoice_number}</strong></td>
+                    <td>${sale.customer_name || 'Walk-in'}</td>
+                    <td>${sale.staff_name}</td>
+                    <td>₦${parseFloat(sale.total).toFixed(2)}</td>
+                    <td>${paymentBadge}</td>
+                    <td>${formattedDate}</td>
+                    <td>
+                        <a href="/receipt/${sale.id}/" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
+                            View
+                        </a>
+                    </td>
+                </tr>
+            `;
+            tableBody.innerHTML += row;
+        });
+    } else if (type === 'stock') {
+        tableBody.innerHTML = '';
+        
+        if (results.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 2rem;">
+                        No low stock products found
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        results.forEach(product => {
+            const row = `
+                <tr>
+                    <td><strong>${product.name}</strong></td>
+                    <td>${product.sku}</td>
+                    <td><span class="badge badge-danger">${product.quantity}</span></td>
+                    <td>${product.reorder_level}</td>
+                    <td>
+                        <a href="/products/edit/${product.id}/" class="btn btn-warning" style="padding: 0.4rem 0.8rem;">
+                            Restock
+                        </a>
+                    </td>
+                </tr>
+            `;
+            tableBody.innerHTML += row;
+        });
     }
     
-    // Add keyboard shortcuts for search
+    // Add warning if limited
+    if (results.length === 50) {
+        const colSpan = type === 'sales' ? 7 : 5;
+        tableBody.innerHTML += `
+            <tr style="background: #fff3cd;">
+                <td colspan="${colSpan}" style="text-align: center; padding: 0.75rem; color: #856404;">
+                    ⚠️ Showing first 50 results. Type more for better results.
+                </td>
+            </tr>
+        `;
+    }
+}
+
+function updateSearchCount(type, count, limited = false) {
+    const countElement = document.getElementById(type + 'SearchCount');
+    const resultCountElement = document.getElementById(type + 'SearchResultCount');
+    
+    if (countElement) {
+        let countText = `${count} result${count !== 1 ? 's' : ''}`;
+        if (limited) countText += ' (50+)';
+        
+        if (count > 0) {
+            countElement.innerHTML = `<small>${countText}</small>`;
+            countElement.style.display = 'block';
+        } else {
+            countElement.style.display = 'none';
+        }
+    }
+    
+    if (resultCountElement) {
+        if (count > 0) {
+            resultCountElement.innerHTML = `<span class="search-result-count">${count} found</span>`;
+        } else {
+            resultCountElement.innerHTML = '';
+        }
+    }
+}
+
+// Initialize search inputs
+document.addEventListener('DOMContentLoaded', function() {
     const salesSearchInput = document.getElementById('salesSearchInput');
     const stockSearchInput = document.getElementById('stockSearchInput');
     
     if (salesSearchInput) {
+        salesSearchInput.addEventListener('input', function(e) {
+            debounceSearch('sales', this.value);
+        });
+        
         salesSearchInput.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 this.value = '';
-                this.closest('form').submit();
+                debounceSearch('sales', '');
             }
         });
-        
-        // Auto-focus if empty
-        if (!salesSearchInput.value) {
-            salesSearchInput.focus();
-        }
     }
     
     if (stockSearchInput) {
+        stockSearchInput.addEventListener('input', function(e) {
+            debounceSearch('stock', this.value);
+        });
+        
         stockSearchInput.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 this.value = '';
-                this.closest('form').submit();
+                debounceSearch('stock', '');
             }
         });
     }

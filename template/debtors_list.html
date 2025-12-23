@@ -2,7 +2,7 @@
 
 {% block title %}Debtors{% endblock %}
 
-{% block extra_css %}
+{% block content %}
 <style>
     .search-container {
         background: #fff;
@@ -18,168 +18,323 @@
         border: 2px solid #ddd;
         border-radius: 8px;
         font-size: 1rem;
+        transition: all 0.3s;
     }
+    
     .search-input:focus {
         border-color: #4f46e5;
         outline: none;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
     }
 
-    .debtor-row.hidden {
-        display: none;
+    .search-result-count {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #4f46e5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
     }
-
-    .no-results {
-        display: none;
+    
+    .search-tips {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #4f46e5;
+    }
+    
+    .payment-history {
+        background: #f8f9fa;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+    }
+    
+    .empty-state {
         text-align: center;
-        padding: 1.5rem;
-        color: #888;
+        padding: 3rem;
+        color: #666;
     }
-    .no-results.show {
-        display: table-row;
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
     }
 </style>
-{% endblock %}
 
-{% block content %}
-<h1 style="margin-bottom: 2rem;"> Debtors & Payment Records</h1>
-
-<!-- Search Bar -->
-<div class="search-container">
-    <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
-        <div style="flex: 1; position: relative;">
-            <input type="text" 
-                   name="search"
-                   class="search-input"
-                   placeholder="Search: 'A' for customers starting with A, 'John' for John, '080' for phone..."
-                   value="{{ search_query|default:'' }}">
-            
-            {% if search_query %}
-            <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
-                <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
-                    {{ debtors|length }} result{{ debtors|length|pluralize }}
-                </small>
-            </div>
-            {% endif %}
-        </div>
-        
-        <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
-            Search
-        </button>
-        
-        {% if search_query %}
-        <a href="{% url 'debtors_list' %}" class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
-            Clear
-        </a>
-        {% endif %}
-    </form>
-    
-    {% if search_query %}
-    <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;">
-        <small>
-            search
-        </small>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h1>Debtors & Payment Records</h1>
+    {% if search_query and debtors|length >= 50 %}
+    <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #fff3cd; border-radius: 6px; color: #92400e; font-size: 0.875rem;">
+        Showing first 50 results
     </div>
     {% endif %}
 </div>
 
+<!-- Search Bar -->
+<div class="search-container">
+    <div style="position: relative;">
+        <input type="text" 
+               class="search-input"
+               id="debtorSearchInput"
+               placeholder="Type to search debtors... (invoice, customer, phone)"
+               value="{{ search_query|default:'' }}"
+               autofocus>
+        <div id="debtorSearchCount" class="search-result-count" style="display: none;"></div>
+    </div>
+    
+    <div class="search-tips">
+        <small>
+            <strong>Search:</strong> Type invoice number, customer name, or phone number
+        </small>
+    </div>
+</div>
+
 <div class="card">
-    <table>
-        <thead>
-            <tr>
-                <th>Invoice</th>
-                <th>Customer</th>
-                <th>Phone</th>
-                <th>Total Amount</th>
-                <th>Paid</th>
-                <th>Balance</th>
-                <th>Date</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for sale in debtors %}
-            <tr>
-                <td><strong>{{ sale.invoice_number }}</strong></td>
-                <td>{{ sale.customer_name|default:"Walk-in" }}</td>
-                <td>{{ sale.customer_phone|default:"-" }}</td>
-                <td>₦{{ sale.total|floatformat:2 }}</td>
-                <td>₦{{ sale.amount_paid|floatformat:2 }}</td>
-                <td><strong style="color: #dc3545;">₦{{ sale.balance|floatformat:2 }}</strong></td>
-                <td>{{ sale.created_at|date:"M d, Y" }}</td>
-                <td>
-                    <a href="{% url 'record_payment' sale.id %}" class="btn btn-success" style="padding: 0.4rem 0.8rem;">
-                        Record Payment
-                    </a>
-                    <a href="{% url 'view_receipt' sale.id %}" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
-                        📄 View
-                    </a>
-                </td>
-            </tr>
-            
-            {% if sale.payments.all %}
-            <tr style="background: #f8f9fa;">
-                <td colspan="8" style="padding-left: 3rem;">
-                    <strong>Payment History:</strong><br>
-                    {% for payment in sale.payments.all %}
-                    <small>
-                        {{ payment.created_at|date:"M d, Y H:i" }} - 
-                        ₦{{ payment.amount|floatformat:2 }} 
-                        ({{ payment.payment_method|title }})
-                        {% if payment.reference %}- Ref: {{ payment.reference }}{% endif %}
-                    </small><br>
-                    {% endfor %}
-                </td>
-            </tr>
-            {% endif %}
-            {% empty %}
-            <tr>
-                <td colspan="8" style="text-align: center; padding: 2rem;">
-                    {% if search_query %}
-                    No debtors found matching "{{ search_query }}"
-                    {% else %}
-                    No outstanding debts! 
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Invoice</th>
+                    <th>Customer</th>
+                    <th>Phone</th>
+                    <th>Total Amount</th>
+                    <th>Paid</th>
+                    <th>Balance</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="debtorTableBody">
+                {% for sale in debtors %}
+                <tr>
+                    <td><strong>{{ sale.invoice_number }}</strong></td>
+                    <td>{{ sale.customer_name|default:"Walk-in" }}</td>
+                    <td>{{ sale.customer_phone|default:"-" }}</td>
+                    <td>₦{{ sale.total|floatformat:2 }}</td>
+                    <td>₦{{ sale.amount_paid|floatformat:2 }}</td>
+                    <td><strong style="color: #dc3545;">₦{{ sale.balance|floatformat:2 }}</strong></td>
+                    <td>{{ sale.created_at|date:"M d, Y" }}</td>
+                    <td>
+                        <a href="{% url 'record_payment' sale.id %}" class="btn btn-success btn-sm">
+                            Record Payment
+                        </a>
+                        <a href="{% url 'view_receipt' sale.id %}" class="btn btn-primary btn-sm">
+                            View
+                        </a>
+                    </td>
+                </tr>
+                
+                {% if sale.payments.all %}
+                <tr style="background: #f8f9fa;">
+                    <td colspan="8" style="padding-left: 3rem;">
+                        <div class="payment-history">
+                            <strong>Payment History:</strong><br>
+                            {% for payment in sale.payments.all %}
+                            <small>
+                                {{ payment.created_at|date:"M d, Y H:i" }} - 
+                                ₦{{ payment.amount|floatformat:2 }} 
+                                ({{ payment.payment_method|title }})
+                                {% if payment.reference %}- Ref: {{ payment.reference }}{% endif %}
+                            </small><br>
+                            {% endfor %}
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                {% empty %}
+                <tr>
+                    <td colspan="8" style="text-align: center; padding: 2rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon"></div>
+                            <h3>No Outstanding Debts</h3>
+                            <p>All customers have paid their bills in full!</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+// Real-time search for debtors
+let debtorDebounceTimer;
+
+function debounceDebtorSearch() {
+    clearTimeout(debtorDebounceTimer);
+    debtorDebounceTimer = setTimeout(() => {
+        performDebtorSearch();
+    }, 300);
+}
+
+async function performDebtorSearch() {
+    const searchTerm = document.getElementById('debtorSearchInput').value.trim();
+    const searchCount = document.getElementById('debtorSearchCount');
+    
+    if (!searchTerm) {
+        // Reload page without search
+        window.location.href = "{% url 'debtors_list' %}";
+        return;
+    }
+    
+    try {
+        const searchUrl = `/api/search/debtors/?q=${encodeURIComponent(searchTerm)}`;
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+        
+        if (data.success) {
+            updateDebtorTable(data.results);
+            updateDebtorSearchCount(data.count, data.limited);
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        // Fallback to page reload
+        window.location.href = "{% url 'debtors_list' %}?search=" + encodeURIComponent(searchTerm);
+    }
+}
+
+function updateDebtorTable(results) {
+    const tableBody = document.getElementById('debtorTableBody');
+    
+    if (results.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 2rem;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <h3>No Results Found</h3>
+                        <p>No debtors found matching your search</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    let rowsHtml = '';
+    results.forEach(sale => {
+        const date = new Date(sale.created_at);
+        const formattedDate = date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric'
+        });
+        
+        // Payment history HTML (if available)
+        let paymentHistory = '';
+        if (sale.payments && sale.payments.length > 0) {
+            let paymentRows = '';
+            sale.payments.forEach(payment => {
+                const paymentDate = new Date(payment.created_at);
+                paymentRows += `
+                    <small>
+                        ${paymentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} - 
+                        ₦${parseFloat(payment.amount).toFixed(2)} 
+                        (${payment.payment_method.charAt(0).toUpperCase() + payment.payment_method.slice(1)})
+                        ${payment.reference ? '- Ref: ' + payment.reference : ''}
+                    </small><br>
+                `;
+            });
+            
+            paymentHistory = `
+                <tr style="background: #f8f9fa;">
+                    <td colspan="8" style="padding-left: 3rem;">
+                        <div class="payment-history">
+                            <strong>Payment History:</strong><br>
+                            ${paymentRows}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+        
+        rowsHtml += `
+            <tr>
+                <td><strong>${sale.invoice_number}</strong></td>
+                <td>${sale.customer_name || 'Walk-in'}</td>
+                <td>${sale.customer_phone || '-'}</td>
+                <td>₦${parseFloat(sale.total).toFixed(2)}</td>
+                <td>₦${parseFloat(sale.amount_paid).toFixed(2)}</td>
+                <td><strong style="color: #dc3545;">₦${parseFloat(sale.balance).toFixed(2)}</strong></td>
+                <td>${formattedDate}</td>
+                <td>
+                    <a href="/debtors/payment/${sale.id}/" class="btn btn-success btn-sm">
+                        Record Payment
+                    </a>
+                    <a href="/receipt/${sale.id}/" class="btn btn-primary btn-sm">
+                        View
+                    </a>
+                </td>
+            </tr>
+            ${paymentHistory}
+        `;
+    });
+    
+    // Add warning row if limited to 50 results
+    if (results.length === 50) {
+        rowsHtml += `
+            <tr style="background: #fff3cd;">
+                <td colspan="8" style="text-align: center; padding: 0.75rem; color: #856404;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                        Showing first 50 results. Type more for better results.
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+    
+    tableBody.innerHTML = rowsHtml;
+}
+
+function updateDebtorSearchCount(count, limited = false) {
+    const searchCount = document.getElementById('debtorSearchCount');
+    
+    if (count > 0) {
+        let countText = `${count} result${count !== 1 ? 's' : ''}`;
+        if (limited) countText += ' (50+)';
+        
+        searchCount.innerHTML = `<small>${countText}</small>`;
+        searchCount.style.display = 'block';
+    } else {
+        searchCount.style.display = 'none';
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('debtorSearchInput');
-    const rows = document.querySelectorAll('.debtor-row');
-    const noResults = document.getElementById('noResultsRow');
-
-    searchInput.addEventListener('input', () => {
-        const term = searchInput.value.toLowerCase().trim();
-        let visible = 0;
-
-        rows.forEach(row => {
-            const matches =
-                row.dataset.name.startsWith(term) ||
-                row.dataset.phone.startsWith(term) ||
-                row.dataset.invoice.startsWith(term);
-
-            if (matches) {
-                row.classList.remove('hidden');
-                visible++;
-            } else {
-                row.classList.add('hidden');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', debounceDebtorSearch);
+        
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                debounceDebtorSearch();
             }
         });
-
-        noResults.classList.toggle('show', visible === 0 && term !== "");
-    });
-
-    // Clear search with ESC
-    searchInput.addEventListener('keydown', e => {
-        if (e.key === "Escape") {
-            searchInput.value = "";
-            searchInput.dispatchEvent(new Event("input"));
+        
+        // Focus on search input
+        searchInput.focus();
+        
+        // If there's a search query in URL, update the input
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchParam = urlParams.get('search');
+        if (searchParam) {
+            searchInput.value = searchParam;
         }
-    });
+    }
 });
 </script>
 {% endblock %}

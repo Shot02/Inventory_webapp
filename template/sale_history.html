@@ -1,0 +1,600 @@
+{% extends 'base.html' %}
+
+{% block title %}Sales History{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .stats-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    
+    .stat-card h3 {
+        font-size: 0.9rem;
+        color: #666;
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-card .value {
+        font-size: 1.8rem;
+        font-weight: bold;
+        color: #667eea;
+    }
+    
+    .search-container {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+    }
+    
+    .search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s;
+    }
+    
+    .search-input:focus {
+        border-color: #667eea;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .search-result-count {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #667eea;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .search-tips {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #667eea;
+    }
+    
+    .date-filters {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .date-input-group {
+        flex: 1;
+        min-width: 150px;
+    }
+    
+    .date-input-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #333;
+    }
+    
+    .table-container {
+        overflow-x: auto;
+        margin-bottom: 2rem;
+    }
+    
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 2rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .pagination-info {
+        font-size: 0.9rem;
+        color: #666;
+    }
+    
+    .pagination-links {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .pagination-link {
+        padding: 0.5rem 1rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #333;
+    }
+    
+    .pagination-link:hover {
+        background: #667eea;
+        color: white;
+        border-color: #667eea;
+    }
+    
+    .pagination-link.active {
+        background: #667eea;
+        color: white;
+        border-color: #667eea;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    .badge {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        border-radius: 8px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger  { background: #fee2e2; color: #b91c1c; }
+    
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        white-space: nowrap;
+    }
+    
+    @media (max-width: 768px) {
+        .stats-cards {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .date-filters {
+            flex-direction: column;
+        }
+        
+        .action-buttons {
+            flex-direction: column;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stats-header">
+    <h1>Sales History</h1>
+    <div style="font-size: 1.1rem; color: #667eea; font-weight: 600;">
+        Total Sales: {{ total_sales_count }}
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="stats-cards">
+    <div class="stat-card">
+        <h3>Page Total</h3>
+        <div class="value">₦{{ page_total|floatformat:2 }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Showing</h3>
+        <div class="value">{{ page_obj.start_index }}-{{ page_obj.end_index }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Total Sales</h3>
+        <div class="value">{{ total_sales_count }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Pages</h3>
+        <div class="value">{{ page_obj.paginator.num_pages }}</div>
+    </div>
+</div>
+
+<!-- Search and Filters -->
+<div class="search-container">
+    <!-- Date Filters -->
+    <div class="date-filters">
+        <div class="date-input-group">
+            <label>From Date</label>
+            <input type="date" id="dateFrom" class="form-control" 
+                   value="{{ request.GET.date_from|default:'' }}">
+        </div>
+        <div class="date-input-group">
+            <label>To Date</label>
+            <input type="date" id="dateTo" class="form-control" 
+                   value="{{ request.GET.date_to|default:'' }}">
+        </div>
+        <div style="display: flex; align-items: flex-end; gap: 0.5rem;">
+            <button onclick="applyDateFilter()" class="btn btn-primary">Apply Date</button>
+            <button onclick="clearDateFilter()" class="btn btn-secondary">Clear</button>
+        </div>
+    </div>
+    
+    <!-- Search Bar -->
+    <div style="margin-top: 1rem;">
+        <div style="position: relative;">
+            <input type="text" 
+                   id="salesSearchInput"
+                   class="search-input"
+                   placeholder="Type to search sales history... (invoice, customer, staff, phone)"
+                   value="{{ search_query|default:'' }}"
+                   autofocus>
+            <div id="searchCount" class="search-result-count" style="display: none;"></div>
+        </div>
+        
+        <div class="search-tips">
+            <small>
+                <strong>Search:</strong> Type invoice number, customer name, phone number, or staff name
+            </small>
+        </div>
+    </div>
+</div>
+
+<!-- Sales Table -->
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Date & Time</th>
+                    <th>Customer</th>
+                    <th>Phone</th>
+                    <th>Staff</th>
+                    <th>Subtotal</th>
+                    <th>Discount</th>
+                    <th>Total</th>
+                    <th>Paid</th>
+                    <th>Balance</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="salesTableBody">
+                {% for sale in sales %}
+                <tr>
+                    <td><strong>{{ sale.invoice_number }}</strong></td>
+                    <td>{{ sale.created_at|date:"M d, Y H:i" }}</td>
+                    <td>{{ sale.customer_name|default:"Walk-in" }}</td>
+                    <td>{{ sale.customer_phone|default:"-" }}</td>
+                    <td>{{ sale.staff.username }}</td>
+                    <td>₦{{ sale.subtotal|floatformat:2 }}</td>
+                    <td>₦{{ sale.discount|floatformat:2 }}</td>
+                    <td><strong>₦{{ sale.total|floatformat:2 }}</strong></td>
+                    <td>₦{{ sale.amount_paid|floatformat:2 }}</td>
+                    <td>
+                        {% if sale.balance > 0 %}
+                        <strong style="color: #dc3545;">₦{{ sale.balance|floatformat:2 }}</strong>
+                        {% else %}
+                        ₦{{ sale.balance|floatformat:2 }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if sale.payment_status == 'paid' %}
+                        <span class="badge badge-success">Paid</span>
+                        {% elif sale.payment_status == 'partial' %}
+                        <span class="badge badge-warning">Partial</span>
+                        {% else %}
+                        <span class="badge badge-danger">Unpaid</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{% url 'view_receipt' sale.id %}" class="btn btn-primary btn-sm">
+                                View
+                            </a>
+                            
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="12" style="text-align: center; padding: 2rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon"></div>
+                            <h3>No Sales Recorded</h3>
+                            <p>No sales have been recorded yet.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Pagination -->
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        <div class="pagination-info">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </div>
+        <div class="pagination-links">
+            {% if page_obj.has_previous %}
+            <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}" class="pagination-link">
+                &laquo; First
+            </a>
+            <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" class="pagination-link">
+                &lsaquo; Prev
+            </a>
+            {% endif %}
+            
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                <span class="pagination-link active">{{ num }}</span>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <a href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}" class="pagination-link">
+                    {{ num }}
+                </a>
+                {% endif %}
+            {% endfor %}
+            
+            {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" class="pagination-link">
+                Next &rsaquo;
+            </a>
+            <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}" class="pagination-link">
+                Last &raquo;
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Real-time search for sales history
+let salesHistoryDebounceTimer;
+let isSearching = false;
+
+function debounceSalesHistorySearch() {
+    clearTimeout(salesHistoryDebounceTimer);
+    salesHistoryDebounceTimer = setTimeout(() => {
+        performSalesHistorySearch();
+    }, 500); // Increased debounce time for better performance
+}
+
+async function performSalesHistorySearch() {
+    if (isSearching) return;
+    
+    const searchTerm = document.getElementById('salesSearchInput').value.trim();
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    
+    if (searchTerm === '' && !dateFrom && !dateTo) {
+        // If no filters, reload page
+        window.location.href = "{% url 'sale_history' %}";
+        return;
+    }
+    
+    isSearching = true;
+    const searchCount = document.getElementById('searchCount');
+    
+    try {
+        let url = `/api/sales-history/?`;
+        const params = new URLSearchParams();
+        
+        if (searchTerm) params.append('q', searchTerm);
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
+        
+        url += params.toString();
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            updateSalesHistoryTable(data.results);
+            updateSalesHistoryCount(data.count);
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        // Fallback to page reload with filters
+        let redirectUrl = "{% url 'sale_history' %}?";
+        if (searchTerm) redirectUrl += `search=${encodeURIComponent(searchTerm)}&`;
+        if (dateFrom) redirectUrl += `date_from=${dateFrom}&`;
+        if (dateTo) redirectUrl += `date_to=${dateTo}`;
+        window.location.href = redirectUrl;
+    } finally {
+        isSearching = false;
+    }
+}
+
+function updateSalesHistoryTable(results) {
+    const tableBody = document.getElementById('salesTableBody');
+    
+    if (results.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="12" style="text-align: center; padding: 2rem;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <h3>No Results Found</h3>
+                        <p>No sales found matching your search criteria</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    let rowsHtml = '';
+    results.forEach(sale => {
+        const date = new Date(sale.created_at);
+        const formattedDate = sale.formatted_date || date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        let statusBadge = '';
+        if (sale.payment_status === 'paid') {
+            statusBadge = '<span class="badge badge-success">Paid</span>';
+        } else if (sale.payment_status === 'partial') {
+            statusBadge = '<span class="badge badge-warning">Partial</span>';
+        } else {
+            statusBadge = '<span class="badge badge-danger">Unpaid</span>';
+        }
+        
+        const balanceHtml = sale.balance > 0 ? 
+            `<strong style="color: #dc3545;">₦${sale.balance.toFixed(2)}</strong>` : 
+            `₦${sale.balance.toFixed(2)}`;
+        
+        rowsHtml += `
+            <tr>
+                <td><strong>${sale.invoice_number}</strong></td>
+                <td>${formattedDate}</td>
+                <td>${sale.customer_name || 'Walk-in'}</td>
+                <td>${sale.customer_phone || '-'}</td>
+                <td>${sale.staff_name}</td>
+                <td>₦${sale.subtotal.toFixed(2)}</td>
+                <td>₦${sale.discount.toFixed(2)}</td>
+                <td><strong>₦${sale.total.toFixed(2)}</strong></td>
+                <td>₦${sale.amount_paid.toFixed(2)}</td>
+                <td>${balanceHtml}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="action-buttons">
+                        <a href="/receipt/${sale.id}/" class="btn btn-primary btn-sm">
+                            View
+                        </a>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tableBody.innerHTML = rowsHtml;
+    
+    // Hide pagination when searching
+    const pagination = document.querySelector('.pagination');
+    if (pagination) {
+        pagination.style.display = 'none';
+    }
+}
+
+function updateSalesHistoryCount(count) {
+    const searchCount = document.getElementById('searchCount');
+    
+    if (count > 0) {
+        searchCount.innerHTML = `<small>${count} found</small>`;
+        searchCount.style.display = 'block';
+    } else {
+        searchCount.style.display = 'none';
+    }
+}
+
+function applyDateFilter() {
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const searchTerm = document.getElementById('salesSearchInput').value.trim();
+    
+    if (dateFrom && dateTo) {
+        // Convert dates for validation
+        const fromDate = new Date(dateFrom);
+        const toDate = new Date(dateTo);
+        
+        if (fromDate > toDate) {
+            
+            return;
+        }
+    }
+    
+    performSalesHistorySearch();
+}
+
+function clearDateFilter() {
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+    document.getElementById('salesSearchInput').value = '';
+    performSalesHistorySearch();
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('salesSearchInput');
+    const dateFromInput = document.getElementById('dateFrom');
+    const dateToInput = document.getElementById('dateTo');
+    
+    // Set today as default for "To Date" if not set
+    if (!dateToInput.value) {
+        const today = new Date().toISOString().split('T')[0];
+        dateToInput.value = today;
+    }
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', debounceSalesHistorySearch);
+        
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                debounceSalesHistorySearch();
+            }
+            
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                performSalesHistorySearch();
+            }
+        });
+        
+        // Focus on search input
+        searchInput.focus();
+    }
+    
+    if (dateFromInput) {
+        dateFromInput.addEventListener('change', debounceSalesHistorySearch);
+    }
+    
+    if (dateToInput) {
+        dateToInput.addEventListener('change', debounceSalesHistorySearch);
+    }
+    
+    // Load any existing search parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const searchParam = urlParams.get('search');
+    const dateFromParam = urlParams.get('date_from');
+    const dateToParam = urlParams.get('date_to');
+    
+    if (searchParam || dateFromParam || dateToParam) {
+        performSalesHistorySearch();
+    }
+});
+</script>
+{% endblock %}

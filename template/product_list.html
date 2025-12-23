@@ -2,7 +2,7 @@
 
 {% block title %}Products{% endblock %}
 
-{% block extra_css %}
+{% block content %}
 <style>
     .search-container {
         background: #fff;
@@ -18,16 +18,38 @@
         border: 2px solid #ddd;
         border-radius: 8px;
         font-size: 1rem;
+        transition: all 0.3s;
     }
+    
     .search-input:focus {
         border-color: #4f46e5;
         outline: none;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
     }
 
-    .product-row.hidden {
-        display: none;
+    .search-result-count {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #4f46e5;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
     }
-
+    
+    .search-tips {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #4f46e5;
+    }
+    
     .badge {
         padding: 0.25rem 0.5rem;
         font-size: 0.75rem;
@@ -35,177 +57,729 @@
         font-weight: 600;
         display: inline-block;
     }
+    
     .badge-success { background: #d1fae5; color: #065f46; }
     .badge-warning { background: #fef3c7; color: #92400e; }
     .badge-danger  { background: #fee2e2; color: #b91c1c; }
-
-    .no-results {
-        display: none;
+    
+    .empty-state {
         text-align: center;
-        padding: 1.5rem;
-        color: #888;
+        padding: 3rem;
+        color: #666;
     }
-    .no-results.show {
-        display: table-row;
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        white-space: nowrap;
+    }
+    
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        backdrop-filter: blur(3px);
+    }
+
+    .modal-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 600px;
+        max-width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        animation: modalFadeIn 0.3s ease-out;
+    }
+
+    @keyframes modalFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #333;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s;
+    }
+    
+    .form-control:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .image-preview {
+        width: 150px;
+        height: 150px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px dashed #ddd;
+    }
+    
+    .image-placeholder {
+        width: 150px;
+        height: 150px;
+        background: #f8f9fa;
+        border: 2px dashed #ddd;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #999;
+    }
+    
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        margin-top: 0.5rem;
     }
 </style>
-{% endblock %}
 
-{% block content %}
-
-<div class="d-flex justify-content-between align-items-center mb-4"  style="display: flex; justify-content: space-between;align-items: center; margin-bottom: 2rem; width: 100%;"> 
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
     <h1>Product List</h1>
     <a href="{% url 'add_product' %}" class="btn btn-primary">Add Product</a>
 </div>
 
 <!-- Search Bar -->
 <div class="search-container">
-    <form method="get" style="display: flex; gap: 0.5rem; align-items: center;">
-        <div style="flex: 1; position: relative;">
-            <input type="text" 
-                   name="search"
-                   class="search-input"
-                   placeholder="Search: 'P' for products starting with P, 'milk' for milk, 'SKU-001' for SKU..."
-                   value="{{ search_query|default:'' }}">
-            
-            {% if search_query %}
-            <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
-                <small style="color: #666; background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">
-                    {{ products|length }} product{{ products|length|pluralize }}
-                </small>
-            </div>
-            {% endif %}
-        </div>
-        
-        <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
-            Search
-        </button>
-        
-        {% if search_query %}
-        <a href="{% url 'product_list' %}" class="btn btn-secondary" style="padding: 0.75rem 1.5rem;">
-            Clear
-        </a>
-        {% endif %}
-    </form>
+    <div style="position: relative;">
+        <input type="text" 
+               class="search-input"
+               id="productSearchInput"
+               placeholder="Type to search products... (name, SKU, category)"
+               value="{{ search_query|default:'' }}"
+               autofocus>
+        <div id="productSearchCount" class="search-result-count" style="display: none;"></div>
+    </div>
     
-    {% if search_query %}
-    <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;">
+    <div class="search-tips">
         <small>
-            search
+            <strong>Search:</strong> Type product name, SKU, category, or supplier
         </small>
     </div>
-    {% endif %}
 </div>
 
-<div class="card p-3">
-    <table id="productTable" class="table">
-        <thead>
-            <tr>
-                <th>Image</th>
-                <th>Name</th>
-                <th>SKU</th>
-                <th>Category</th>
-                <th>Price</th>
-                <th>Cost</th>
-                <th>Stock</th>
-                <th>Status</th>
-                <th></th>
-            </tr>
-        </thead>
-
-        <tbody id="productTableBody">
-            {% for product in products %}
-            <tr class="product-row"
-                data-name="{{ product.name|lower }}"
-                data-sku="{{ product.sku|lower }}"
-                data-category="{{ product.category.name|default:'n/a'|lower }}">
-
-                <td>
-                    {% if product.image %}
-                        <img src="{{ product.image.url }}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;">
-                    {% else %}
-                        <div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px;">
-                            none
-                        </div>
-                    {% endif %}
-                </td>
-
-                <td><strong>{{ product.name }}</strong></td>
-                <td><code>{{ product.sku }}</code></td>
-                <td>{{ product.category.name|default:"N/A" }}</td>
-                <td>₦{{ product.price|floatformat:2 }}</td>
-                <td>₦{{ product.cost_price|floatformat:2 }}</td>
-                <td>{{ product.quantity }}</td>
-
-                <td>
-                    {% if product.quantity == 0 %}
-                        <span class="badge badge-danger">Out</span>
-                    {% elif product.is_low_stock %}
-                        <span class="badge badge-warning">Low</span>
-                    {% else %}
-                        <span class="badge badge-success">In</span>
-                    {% endif %}
-                </td>
-
-                <td style="white-space: nowrap;">
-                    <a href="{% url 'edit_product' product.id %}" class="btn btn-sm btn-primary">Edit</a>
-                    <a href="{% url 'delete_product' product.id %}" 
-                       class="btn btn-sm btn-danger"
-                       onclick="return confirm('Delete {{ product.name }}?')">
-                       Delete
-                    </a>
-                </td>
-            </tr>
-            {% empty %}
+<div class="card">
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
                 <tr>
-                    <td colspan="9" class="text-center py-4">
-                        📭 No products yet. Click "Add Product" to begin.
+                    <th>Image</th>
+                    <th>Name</th>
+                    <th>SKU</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Cost</th>
+                    <th>Stock</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="productTableBody">
+                {% for product in products %}
+                <tr data-product-id="{{ product.id }}"
+                    data-name="{{ product.name }}"
+                    data-sku="{{ product.sku }}"
+                    data-category-id="{{ product.category.id|default:'' }}"
+                    data-category-name="{{ product.category.name|default:'' }}"
+                    data-supplier-id="{{ product.supplier.id|default:'' }}"
+                    data-supplier-name="{{ product.supplier.name|default:'' }}"
+                    data-description="{{ product.description|default:'' }}"
+                    data-price="{{ product.price|floatformat:2 }}"
+                    data-cost-price="{{ product.cost_price|floatformat:2 }}"
+                    data-quantity="{{ product.quantity }}"
+                    data-reorder-level="{{ product.reorder_level }}"
+                    data-image-url="{% if product.image and product.image.url %}{{ product.image.url }}{% endif %}">
+                    <td>
+                        {% if product.image %}
+                            <img src="{{ product.image.url }}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" alt="{{ product.name }}">
+                        {% else %}
+                            <div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px; color: #999;">
+                                none
+                            </div>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ product.name }}</strong></td>
+                    <td><code>{{ product.sku }}</code></td>
+                    <td>{{ product.category.name|default:"N/A" }}</td>
+                    <td>₦{{ product.price|floatformat:2 }}</td>
+                    <td>₦{{ product.cost_price|floatformat:2 }}</td>
+                    <td>{{ product.quantity }}</td>
+                    <td>
+                        {% if product.quantity == 0 %}
+                            <span class="badge badge-danger">Out of Stock</span>
+                        {% elif product.is_low_stock %}
+                            <span class="badge badge-warning">Low Stock</span>
+                        {% else %}
+                            <span class="badge badge-success">In Stock</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button onclick="openEditProductModal({{ product.id }})" class="btn btn-primary btn-sm">
+                                Edit
+                            </button>
+                            <a href="{% url 'delete_product' product.id %}" 
+                            class="btn btn-danger btn-sm"
+                            >
+                            Delete
+                            </a>
+                        </div>
                     </td>
                 </tr>
-            {% endfor %}
+                {% empty %}
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 2rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <h3>No Products Found</h3>
+                            <p>
+                                {% if search_query %}
+                                No products found matching "{{ search_query }}"
+                                {% else %}
+                                No products yet. Click "Add Product" to get started.
+                                {% endif %}
+                            </p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 
-            <tr id="noResultsRow" class="no-results">
-                <td colspan="9">🔍 No matching products.</td>
-            </tr>
-        </tbody>
-    </table>
+<!-- Edit Product Modal -->
+<div id="editProductModal" class="modal-overlay">
+    <div class="modal-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h3 style="margin: 0;">Edit Product</h3>
+            <button onclick="closeEditProductModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">&times;</button>
+        </div>
+        
+        <form id="editProductForm" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" id="editProductId" name="product_id">
+            
+            <div class="form-group">
+                <label for="editProductName">Product Name *</label>
+                <input type="text" id="editProductName" name="name" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label>SKU</label>
+                <input type="text" id="editProductSKU" class="form-control" disabled
+                       style="background: #f8f9fa; color: #666;">
+                <small style="color: #666;">SKU is auto-generated and cannot be changed</small>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+                <div class="form-group">
+                    <label for="editProductCategory">Category</label>
+                    <select id="editProductCategory" name="category" class="form-control">
+                        <option value="">-- Select Category --</option>
+                        {% for category in categories %}
+                        <option value="{{ category.id }}">{{ category.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div style="margin-top: 0.5rem;">
+                        <input type="text" id="editNewCategory" name="new_category" class="form-control" 
+                               placeholder="Or enter new category">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editProductSupplier">Supplier</label>
+                    <select id="editProductSupplier" name="supplier" class="form-control">
+                        <option value="">-- Select Supplier --</option>
+                        {% for supplier in suppliers %}
+                        <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div style="margin-top: 0.5rem;">
+                        <input type="text" id="editNewSupplier" name="new_supplier" class="form-control" 
+                               placeholder="Or enter new supplier">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="editProductDescription">Description</label>
+                <textarea id="editProductDescription" name="description" class="form-control" rows="3"></textarea>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+                <div class="form-group">
+                    <label for="editProductPrice">Selling Price (₦) *</label>
+                    <input type="number" id="editProductPrice" name="price" class="form-control" 
+                           step="0.01" min="0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editProductCostPrice">Cost Price (₦)</label>
+                    <input type="number" id="editProductCostPrice" name="cost_price" class="form-control" 
+                           step="0.01" min="0">
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+                <div class="form-group">
+                    <label for="editProductQuantity">Quantity *</label>
+                    <input type="number" id="editProductQuantity" name="quantity" class="form-control" 
+                           min="0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editProductReorderLevel">Reorder Level</label>
+                    <input type="number" id="editProductReorderLevel" name="reorder_level" class="form-control" 
+                           min="0">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="editProductImage">Product Image</label>
+                <input type="file" id="editProductImage" name="image" class="form-control" accept="image/*">
+                
+                <div style="margin-top: 1rem;">
+                    <p><strong>Current Image:</strong></p>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div id="currentImageContainer" class="image-placeholder">
+                            No image
+                        </div>
+                        <div>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="editClearImage" name="clear_image" value="1">
+                                <span>Remove current image</span>
+                            </label>
+                            <p style="color: #666; font-size: 0.9rem; margin-top: 0.5rem;">
+                                Upload a new image to replace the current one
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-success" style="flex: 1;" id="editProductSubmitBtn">
+                    Save Changes
+                </button>
+                <button type="button" onclick="closeEditProductModal()" class="btn btn-danger"> Cancel</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    const searchInput = document.getElementById('productSearchInput');
-    const rows = document.querySelectorAll('.product-row');
-    const noResults = document.getElementById('noResultsRow');
+// Open edit product modal
+function openEditProductModal(productId) {
+    try {
+        // Find the table row with the product data
+        const row = document.querySelector(`tr[data-product-id="${productId}"]`);
+        if (!row) {
+            alert('Product not found');
+            return;
+        }
+        
+        // Get data from data attributes
+        const productData = {
+            id: row.dataset.productId,
+            name: row.dataset.name,
+            sku: row.dataset.sku,
+            categoryId: row.dataset.categoryId || '',
+            categoryName: row.dataset.categoryName || '',
+            supplierId: row.dataset.supplierId || '',
+            supplierName: row.dataset.supplierName || '',
+            description: row.dataset.description || '',
+            price: row.dataset.price || '0.00',
+            costPrice: row.dataset.costPrice || '0.00',
+            quantity: row.dataset.quantity || '0',
+            reorderLevel: row.dataset.reorderLevel || '10',
+            imageUrl: row.dataset.imageUrl || ''
+        };
+        
+        // Populate the form
+        document.getElementById('editProductId').value = productData.id;
+        document.getElementById('editProductName').value = productData.name;
+        document.getElementById('editProductSKU').value = productData.sku;
+        document.getElementById('editProductCategory').value = productData.categoryId;
+        document.getElementById('editNewCategory').value = (productData.categoryName && !productData.categoryId) ? productData.categoryName : '';
+        document.getElementById('editProductSupplier').value = productData.supplierId;
+        document.getElementById('editNewSupplier').value = (productData.supplierName && !productData.supplierId) ? productData.supplierName : '';
+        document.getElementById('editProductDescription').value = productData.description;
+        document.getElementById('editProductPrice').value = productData.price;
+        document.getElementById('editProductCostPrice').value = productData.costPrice;
+        document.getElementById('editProductQuantity').value = productData.quantity;
+        document.getElementById('editProductReorderLevel').value = productData.reorderLevel;
+        
+        // Handle image preview
+        const imageContainer = document.getElementById('currentImageContainer');
+        if (productData.imageUrl) {
+            imageContainer.innerHTML = `<img src="${productData.imageUrl}" class="image-preview">`;
+            document.getElementById('editClearImage').disabled = false;
+        } else {
+            imageContainer.innerHTML = 'No image';
+            imageContainer.className = 'image-placeholder';
+            document.getElementById('editClearImage').disabled = true;
+            document.getElementById('editClearImage').checked = false;
+        }
+        
+        // Show modal
+        document.getElementById('editProductModal').style.display = 'flex';
+        document.getElementById('editProductName').focus();
+        
+    } catch (error) {
+        console.error('Error opening edit modal:', error);
+        alert('Error loading product data. Please try again.');
+    }
+}
 
-    searchInput.addEventListener('input', () => {
-        const term = searchInput.value.toLowerCase().trim();
-        let visible = 0;
+// Close edit product modal
+function closeEditProductModal() {
+    document.getElementById('editProductModal').style.display = 'none';
+    document.getElementById('editProductForm').reset();
+    
+    // Reset image preview
+    const imageContainer = document.getElementById('currentImageContainer');
+    imageContainer.innerHTML = 'No image';
+    imageContainer.className = 'image-placeholder';
+}
 
-        rows.forEach(row => {
-            const matches =
-                row.dataset.name.includes(term) ||
-                row.dataset.sku.includes(term) ||
-                row.dataset.category.includes(term);
+// Handle category/supplier selection logic
+document.getElementById('editProductCategory').addEventListener('change', function() {
+    if (this.value) {
+        document.getElementById('editNewCategory').value = '';
+    }
+});
 
-            if (matches) {
-                row.classList.remove('hidden');
-                visible++;
-            } else {
-                row.classList.add('hidden');
+document.getElementById('editNewCategory').addEventListener('input', function() {
+    if (this.value) {
+        document.getElementById('editProductCategory').value = '';
+    }
+});
+
+document.getElementById('editProductSupplier').addEventListener('change', function() {
+    if (this.value) {
+        document.getElementById('editNewSupplier').value = '';
+    }
+});
+
+document.getElementById('editNewSupplier').addEventListener('input', function() {
+    if (this.value) {
+        document.getElementById('editProductSupplier').value = '';
+    }
+});
+
+// Handle edit product form submission
+document.getElementById('editProductForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('editProductSubmitBtn');
+    const formData = new FormData(this);
+    
+    // Basic validation
+    const productName = document.getElementById('editProductName').value.trim();
+    const price = parseFloat(document.getElementById('editProductPrice').value) || 0;
+    const quantity = parseInt(document.getElementById('editProductQuantity').value) || 0;
+    const category = document.getElementById('editProductCategory').value;
+    const newCategory = document.getElementById('editNewCategory').value.trim();
+    
+    if (!productName) {
+        document.getElementById('editProductName').focus();
+        return;
+    }
+    
+    if (price <= 0) {
+        document.getElementById('editProductPrice').focus();
+        return;
+    }
+    
+    if (quantity < 0) {
+        document.getElementById('editProductQuantity').focus();
+        return;
+    }
+    
+    // Check if either category or new category is provided
+    if (!category && !newCategory) {
+        return;
+    }
+    
+    // Confirm before submitting
+    if (!confirm('Are you sure you want to update this product?')) {
+        return;
+    }
+    
+    try {
+        // Show loading state
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Saving...';
+        
+        // Send AJAX request to update product
+        const response = await fetch(`/products/edit/${formData.get('product_id')}/`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCookie('csrftoken')
             }
         });
-
-        noResults.classList.toggle('show', visible === 0 && term !== "");
-    });
-
-    // Clear search with ESC
-    searchInput.addEventListener('keydown', e => {
-        if (e.key === "Escape") {
-            searchInput.value = "";
-            searchInput.dispatchEvent(new Event("input"));
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Show success message
+            submitBtn.innerHTML = '✓ Saved!';
+            submitBtn.style.background = '#10b981';
+            
+            // Close modal and reload after delay
+            setTimeout(() => {
+                closeEditProductModal();
+                location.reload();
+            }, 1000);
+            
+        } else {
+            alert(result.error || 'Error updating product');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Save Changes';
         }
+        
+    } catch (error) {
+        console.error('Network error:', error);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Save Changes';
+    }
+});
+
+// Close modal when clicking outside
+document.getElementById('editProductModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEditProductModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('editProductModal').style.display === 'flex') {
+        closeEditProductModal();
+    }
+});
+
+// Real-time search for products
+let productDebounceTimer;
+
+function debounceProductSearch() {
+    clearTimeout(productDebounceTimer);
+    productDebounceTimer = setTimeout(() => {
+        performProductSearch();
+    }, 300);
+}
+
+async function performProductSearch() {
+    const searchTerm = document.getElementById('productSearchInput').value.trim();
+    const searchCount = document.getElementById('productSearchCount');
+    
+    if (!searchTerm) {
+        // Reload page without search
+        window.location.href = "{% url 'product_list' %}";
+        return;
+    }
+    
+    try {
+        const searchUrl = `/api/search/products/?q=${encodeURIComponent(searchTerm)}`;
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+        
+        if (data.success) {
+            updateProductTable(data.results);
+            updateProductSearchCount(data.count, data.limited);
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        // Fallback to page reload with search
+        window.location.href = "{% url 'product_list' %}?search=" + encodeURIComponent(searchTerm);
+    }
+}
+
+function updateProductTable(results) {
+    const tableBody = document.getElementById('productTableBody');
+    
+    if (results.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 2rem;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <h3>No Results Found</h3>
+                        <p>No products found matching your search</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    let rowsHtml = '';
+    results.forEach(product => {
+        let statusBadge;
+        if (product.quantity === 0) {
+            statusBadge = '<span class="badge badge-danger">Out of Stock</span>';
+        } else if (product.is_low_stock) {
+            statusBadge = '<span class="badge badge-warning">Low Stock</span>';
+        } else {
+            statusBadge = '<span class="badge badge-success">In Stock</span>';
+        }
+        
+        rowsHtml += `
+            <tr data-product-id="${product.id}"
+                data-name="${product.name}"
+                data-sku="${product.sku}"
+                data-category-id="${product.category_id || ''}"
+                data-category-name="${product.category || ''}"
+                data-supplier-id="${product.supplier_id || ''}"
+                data-supplier-name="${product.supplier || ''}"
+                data-description="${product.description || ''}"
+                data-price="${product.price}"
+                data-cost-price="${product.cost_price}"
+                data-quantity="${product.quantity}"
+                data-reorder-level="${product.reorder_level || 10}"
+                data-image-url="${product.image || ''}">
+                <td>
+                    ${product.image ? 
+                        `<img src="${product.image}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" alt="${product.name}">` : 
+                        `<div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px; color: #999;">
+                            none
+                        </div>`}
+                </td>
+                <td><strong>${product.name}</strong></td>
+                <td><code>${product.sku}</code></td>
+                <td>${product.category || 'N/A'}</td>
+                <td>₦${parseFloat(product.price).toFixed(2)}</td>
+                <td>₦${parseFloat(product.cost_price).toFixed(2)}</td>
+                <td>${product.quantity}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button onclick="openEditProductModal(${product.id})" class="btn btn-primary btn-sm">
+                            Edit
+                        </button>
+                        <a href="/products/delete/${product.id}/" 
+                           class="btn btn-danger btn-sm"
+                           onclick="return confirm('Are you sure you want to delete ${product.name}?')">
+                           Delete
+                        </a>
+                    </div>
+                </td>
+            </tr>
+        `;
     });
+    
+    // Add warning row if limited to 50 results
+    if (results.length === 50) {
+        rowsHtml += `
+            <tr style="background: #fff3cd;">
+                <td colspan="9" style="text-align: center; padding: 0.75rem; color: #856404;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                        ⚠️ Showing first 50 results. Type more for better results.
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+    
+    tableBody.innerHTML = rowsHtml;
+}
+
+function updateProductSearchCount(count, limited = false) {
+    const searchCount = document.getElementById('productSearchCount');
+    
+    if (count > 0) {
+        let countText = `${count} product${count !== 1 ? 's' : ''}`;
+        if (limited) countText += ' (50+)';
+        
+        searchCount.innerHTML = `<small>${countText}</small>`;
+        searchCount.style.display = 'block';
+    } else {
+        searchCount.style.display = 'none';
+    }
+}
+
+// CSRF token helper function
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('productSearchInput');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', debounceProductSearch);
+        
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                debounceProductSearch();
+            }
+        });
+        
+        // Focus on search input
+        searchInput.focus();
+        
+        // If there's a search query in URL, update the input
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchParam = urlParams.get('search');
+        if (searchParam) {
+            searchInput.value = searchParam;
+        }
+    }
 });
 </script>
-
 {% endblock %}

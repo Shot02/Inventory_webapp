@@ -21,6 +21,9 @@
     .search-box input {
         font-size: 1.1rem;
         padding: 1rem;
+        width: 100%;
+        border: 2px solid #ddd;
+        border-radius: 8px;
     }
     
     .search-results {
@@ -35,6 +38,7 @@
         overflow-y: auto;
         z-index: 100;
         display: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
     .search-result-item {
@@ -269,7 +273,7 @@
             <div class="search-section">
                 <div class="search-box">
                     <input type="text" id="productSearch" class="form-control" 
-                           placeholder=" Search product by name..." autofocus>
+                           placeholder=" Search product by name or SKU..." autofocus>
                     <div id="searchResults" class="search-results"></div>
                 </div>
             </div>
@@ -372,7 +376,7 @@
             <div class="amount-paid-section">
                 <div class="form-group">
                     <label>Amount Paid</label>
-                    <input type="number" id="amountPaid" class="form-control" step="0.01" min="0">
+                    <input type="number" id="amountPaid" class="form-control" step="0.01" min="0" value="0">
                 </div>
             </div>
             
@@ -405,7 +409,7 @@ let searchTimeout;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Set default amount paid to 0, will be updated when cart has items
+    // Set default amount paid to 0
     document.getElementById('amountPaid').value = '0';
     
     // Check for cart to load from sessionStorage
@@ -417,19 +421,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-document.getElementById('productSearch').addEventListener('keyup', function(e) {
-    if (e.key === 'Enter' && this.value.trim()) {
-        searchProducts(this.value.trim());
-    } else {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            if (this.value.trim()) {
-                searchProducts(this.value.trim());
-            } else {
-                document.getElementById('searchResults').style.display = 'none';
-            }
-        }, 300);
-    }
+// REAL-TIME PRODUCT SEARCH
+document.getElementById('productSearch').addEventListener('input', function(e) {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        if (this.value.trim()) {
+            searchProducts(this.value.trim());
+        } else {
+            document.getElementById('searchResults').style.display = 'none';
+        }
+    }, 300);
 });
 
 function getStockBadge(quantity) {
@@ -443,34 +444,39 @@ function getStockBadge(quantity) {
 }
 
 async function searchProducts(query) {
-    const response = await fetch(`/api/search-products/?q=${encodeURIComponent(query)}`);
-    const products = await response.json();
-    
-    const resultsDiv = document.getElementById('searchResults');
-    
-    if (products.length === 0) {
-        resultsDiv.innerHTML = '<div style="padding: 1rem; text-align: center;">No products found</div>';
-        resultsDiv.style.display = 'block';
-        return;
-    }
-    
-    resultsDiv.innerHTML = products.map(p => {
-        const isOutOfStock = p.quantity === 0;
-        const className = isOutOfStock ? 'search-result-item out-of-stock' : 'search-result-item';
-        const onclick = isOutOfStock ? '' : `onclick='addToCart(${JSON.stringify(p)})'`;
+    try {
+        const response = await fetch(`/api/search-products/?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        const products = data.products || [];
         
-        return `
-            <div class="${className}" ${onclick}>
-                <img src="${p.image || '/static/placeholder.png'}" alt="${p.name}">
-                <div style="flex: 1;">
-                    <strong>${p.name}</strong><br>
-                    <small>Price: ₦${p.price} | ${getStockBadge(p.quantity)}</small>
+        const resultsDiv = document.getElementById('searchResults');
+        
+        if (products.length === 0) {
+            resultsDiv.innerHTML = '<div style="padding: 1rem; text-align: center;">No products found</div>';
+            resultsDiv.style.display = 'block';
+            return;
+        }
+        
+        resultsDiv.innerHTML = products.map(p => {
+            const isOutOfStock = p.quantity === 0;
+            const className = isOutOfStock ? 'search-result-item out-of-stock' : 'search-result-item';
+            const onclick = isOutOfStock ? '' : `onclick='addToCart(${JSON.stringify(p)})'`;
+            
+            return `
+                <div class="${className}" ${onclick}>
+                    <img src="${p.image || '/static/placeholder.png'}" alt="${p.name}">
+                    <div style="flex: 1;">
+                        <strong>${p.name}</strong><br>
+                        <small>Price: ₦${p.price} | ${getStockBadge(p.quantity)}</small>
+                    </div>
                 </div>
-            </div>
-        `;
-    }).join('');
-    
-    resultsDiv.style.display = 'block';
+            `;
+        }).join('');
+        
+        resultsDiv.style.display = 'block';
+    } catch (error) {
+        console.error('Search error:', error);
+    }
 }
 
 function addToCart(product) {
@@ -628,6 +634,12 @@ function updateTotals() {
     const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
     if (paymentType === 'full' && cart.length > 0) {
         document.getElementById('amountPaid').value = grandTotal.toFixed(2);
+    } else if (paymentType === 'installment') {
+        // For installment, ensure amount paid is not negative
+        const currentAmount = parseFloat(document.getElementById('amountPaid').value) || 0;
+        if (currentAmount < 0) {
+            document.getElementById('amountPaid').value = '0';
+        }
     }
 }
 
@@ -642,7 +654,7 @@ function selectPaymentType(type, event = null) {
     if (event) {
         event.currentTarget.classList.add('active');
     } else {
-        // If called programmatically (without event), find and activate the correct option
+        
         const targetOption = document.querySelector(`.payment-type-option input[value="${type}"]`).closest('.payment-type-option');
         if (targetOption) {
             targetOption.classList.add('active');
@@ -659,8 +671,9 @@ function selectPaymentType(type, event = null) {
     
     if (type === 'installment') {
         customerInfoSection.style.display = 'block';
-        // For installment, set amount to 0 or keep current if it's less than total
-        if (parseFloat(amountPaidInput.value) >= grandTotal || amountPaidInput.value === '0') {
+        // For installment, ensure amount is not negative
+        const currentAmount = parseFloat(amountPaidInput.value) || 0;
+        if (currentAmount < 0) {
             amountPaidInput.value = '0';
         }
     } else {
@@ -683,7 +696,6 @@ function selectPaymentMethod(method, event = null) {
     if (event) {
         event.currentTarget.classList.add('active');
     } else {
-        // If called programmatically (without event), find and activate the correct option
         const targetOption = document.querySelector(`.payment-method-option input[value="${method}"]`).closest('.payment-method-option');
         if (targetOption) {
             targetOption.classList.add('active');
@@ -694,7 +706,7 @@ function selectPaymentMethod(method, event = null) {
     document.querySelector(`input[value="${method}"]`).checked = true;
 }
 
-// UPDATED: processSale function with saved cart deletion
+// UPDATED: processSale function - Allows installment with 0 amount
 async function processSale() {
     if (cart.length === 0) {
         return;
@@ -706,14 +718,6 @@ async function processSale() {
     const amountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
     const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
     const grandTotal = parseFloat(document.getElementById('grandTotal').textContent.replace('₦', '').replace(',', '')) || 0;
-    
-    // NEW: Check if this cart was loaded from a saved cart
-    const cartToLoad = sessionStorage.getItem('cartToLoad');
-    let savedCartId = null;
-    if (cartToLoad) {
-        const cartData = JSON.parse(cartToLoad);
-        savedCartId = cartData.saved_cart_id || null;
-    }
     
     // Validate based on payment type
     if (paymentType === 'installment') {
@@ -728,31 +732,30 @@ async function processSale() {
             return;
         }
         
-        // Validate installment amount
-        if (amountPaid <= 0) {
+        // UPDATED: Allow 0 amount for installment (full debt)
+        if (amountPaid < 0) {
+            alert('Amount paid cannot be negative.');
             document.getElementById('amountPaid').focus();
             return;
         }
         
-        if (amountPaid >= grandTotal) {
+        if (amountPaid > grandTotal) {
             document.getElementById('amountPaid').focus();
             return;
         }
     } else {
         // For full payment: Name and phone are OPTIONAL
-        // Use "Walk-in Customer" if no name provided
-        // No validation needed for name/phone
-        
-        // Auto-set amount paid to grand total if it's 0 or less than total
-        if (amountPaid === 0 || amountPaid < grandTotal) {
+        // Auto-set amount paid to grand total if it's 0
+        if (amountPaid === 0 && cart.length > 0) {
             document.getElementById('amountPaid').value = grandTotal.toFixed(2);
         }
     }
     
-    // Final validation for amount paid
+    // Final amount validation
     const finalAmountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
     
     if (finalAmountPaid < 0) {
+        alert('Amount paid cannot be negative.');
         return;
     }
     
@@ -785,7 +788,7 @@ async function processSale() {
                 customer_phone: finalCustomerPhone,
                 amount_paid: finalAmountPaid,
                 payment_method: paymentMethod,
-                saved_cart_id: savedCartId  // Pass the saved cart ID for deletion
+                payment_type: paymentType
             })
         });
         
@@ -804,11 +807,9 @@ async function processSale() {
             // Reset to full payment
             selectPaymentType('full');
             
-            // NEW: Clear the saved cart from session storage
-            sessionStorage.removeItem('cartToLoad');
-            
             // Redirect to receipt
             window.location.href = `/receipt/${result.sale_id}/`;
+        } else {
         }
     } catch (error) {
         console.log('Error processing sale: ' + error);
@@ -867,6 +868,7 @@ async function saveCart() {
         
         if (result.success) {
             closeSaveCartModal();
+        } else {
         }
     } catch (error) {
         console.log('Error saving cart: ' + error);
@@ -943,9 +945,18 @@ document.getElementById('saveCartModal').addEventListener('click', function(e) {
     }
 });
 
+// Close search results when clicking outside
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.search-box')) {
         document.getElementById('searchResults').style.display = 'none';
+    }
+});
+
+// Escape key to close search results
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.getElementById('searchResults').style.display = 'none';
+        document.getElementById('productSearch').value = '';
     }
 });
 </script>

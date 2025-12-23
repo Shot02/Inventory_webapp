@@ -1,83 +1,24 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import login, logout, authenticate
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib import messages
-from django.db.models import Q, Sum, F, CharField, Value
-from django.db.models.functions import Concat
-from django.http import JsonResponse, HttpResponse
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate, login, logout
+from django.db.models import Q, Sum, F, Count
 from django.utils import timezone
 from datetime import datetime, timedelta
-from decimal import Decimal
+from django.contrib import messages
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 import json
-import re
-from django.views.decorators.csrf import csrf_protect
+import uuid
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
-from .models import (User, Product, Supplier, Category, Sale, SaleItem, 
-                    StockMovement, Payment, PendingCart, SavedCart, RefundRequest)
-from .forms import (StaffRegistrationForm, PaymentForm, ProductForm, RefundRequestForm)
+# Import your models
+from .models import (
+    User, Product, Sale, SaleItem, Payment, Category, 
+    Supplier, StockMovement, PendingCart, SavedCart, RefundRequest
+)
 
-def is_admin(user):
-    return user.is_authenticated and (user.role == 'admin' or user.is_superuser)
-
-def is_staff_or_admin(user):
-    return user.is_authenticated and user.role in ['admin', 'staff', 'manager']
-
-# ==================== SMART SEARCH HELPER FUNCTIONS ====================
-
-def parse_search_query(search_query):
-    """Parse search query into keywords and apply smart filtering logic"""
-    if not search_query:
-        return []
-    
-    # Split by spaces, commas, or multiple spaces
-    keywords = re.split(r'[,\s]+', search_query.strip())
-    
-    # Remove empty strings
-    keywords = [k.strip().lower() for k in keywords if k.strip()]
-    
-    return keywords
-
-def build_search_query(keywords, fields):
-    """Build Q objects for search with smart matching"""
-    if not keywords:
-        return Q()
-    
-    query = Q()
-    
-    for keyword in keywords:
-        keyword_query = Q()
-        
-        # Check if keyword is a single character (likely searching by first letter)
-        if len(keyword) == 1:
-            # Search for items starting with this letter
-            for field in fields:
-                keyword_query |= Q(**{f"{field}__istartswith": keyword})
-        else:
-            # For multi-character keywords, try multiple strategies
-            for field in fields:
-                # 1. Try exact match first (case-insensitive)
-                keyword_query |= Q(**{f"{field}__iexact": keyword})
-                
-                # 2. Try starts with
-                keyword_query |= Q(**{f"{field}__istartswith": keyword})
-                
-                # 3. Try contains (standard search)
-                keyword_query |= Q(**{f"{field}__icontains": keyword})
-        
-        # Add this keyword's query to the main query (AND logic between keywords)
-        if query:
-            query &= keyword_query
-        else:
-            query = keyword_query
-    
-    return query
-
-# ==================== AUTHENTICATION VIEWS ====================
-
+# =================== AUTHENTICATION VIEWS ===================
 def login_view(request):
-    if request.user.is_authenticated:
-        return redirect('home')
-    
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
@@ -85,230 +26,158 @@ def login_view(request):
         
         if user is not None:
             login(request, user)
-            messages.success(request, f'Welcome back, {user.first_name or user.username}!')
-            return redirect('home')
+            # Redirect based on user role
+            if user.role == 'admin' or user.is_superuser:
+                return redirect('admin_dashboard')
+            else:
+                return redirect('home')
         else:
-            messages.error(request, 'Invalid username or password.')
+            messages.error(request, 'Invalid username or password')
     
     return render(request, 'login.html')
 
 @login_required
 def logout_view(request):
     logout(request)
-    messages.success(request, 'You have been logged out successfully.')
     return redirect('login')
 
-# ==================== HOME/POS VIEW ====================
-
+# =================== HOME / POS VIEWS ===================
 @login_required
-@user_passes_test(is_staff_or_admin)
 def home(request):
-    return render(request, 'home.html')
-
-# ==================== PRODUCT SEARCH API ====================
+    products = Product.objects.filter(quantity__gt=0).order_by('name')
+    categories = Category.objects.all()
+    
+    # Get pending cart for current user
+    pending_cart = PendingCart.objects.filter(staff=request.user).first()
+    
+    context = {
+        'products': products,
+        'categories': categories,
+        'pending_cart': pending_cart.cart_data if pending_cart else None,
+    }
+    return render(request, 'home.html', context)
 
 @login_required
 def search_products(request):
+    """API endpoint for POS product search"""
     query = request.GET.get('q', '')
+    
     if query:
-        # Use smart search for product search in POS
-        keywords = parse_search_query(query)
-        
-        if keywords:
-            search_q = Q()
-            for keyword in keywords:
-                keyword_query = Q()
-                
-                if len(keyword) == 1:
-                    keyword_query |= Q(name__istartswith=keyword)
-                    keyword_query |= Q(sku__istartswith=keyword)
-                else:
-                    keyword_query |= Q(name__iexact=keyword)
-                    keyword_query |= Q(name__istartswith=keyword)
-                    keyword_query |= Q(name__icontains=keyword)
-                    keyword_query |= Q(sku__icontains=keyword)
-                    keyword_query |= Q(description__icontains=keyword)
-                
-                if search_q:
-                    search_q &= keyword_query
-                else:
-                    search_q = keyword_query
-            
-            products = Product.objects.filter(search_q)[:20]
-        else:
-            products = Product.objects.none()
-        
-        data = [{
-            'id': p.id,
-            'name': p.name,
-            'sku': p.sku,
-            'price': str(p.price),
-            'quantity': p.quantity,
-            'image': p.image.url if p.image else None
-        } for p in products]
-        
-        return JsonResponse(data, safe=False)
-    return JsonResponse([], safe=False)
-
-# ==================== PROCESS SALE ====================
+        products = Product.objects.filter(
+            Q(name__icontains=query) |
+            Q(sku__icontains=query) |
+            Q(category__name__icontains=query)
+        ).filter(quantity__gt=0)[:20]  # Limit for POS
+    else:
+        products = Product.objects.filter(quantity__gt=0)[:20]
+    
+    results = []
+    for product in products:
+        results.append({
+            'id': product.id,
+            'name': product.name,
+            'sku': product.sku,
+            'price': float(product.price),
+            'quantity': product.quantity,
+            'image': product.image.url if product.image else None,
+        })
+    
+    return JsonResponse({'products': results})
 
 @login_required
 def process_sale(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            items = data.get('items', [])
-            customer_name = data.get('customer_name', '').strip()
-            customer_phone = data.get('customer_phone', '').strip()
-            amount_paid = Decimal(data.get('amount_paid', 0))
-            payment_method = data.get('payment_method', 'cash')
-            saved_cart_id = data.get('saved_cart_id')
-            
-            if not items:
-                return JsonResponse({'success': False, 'error': 'No items in cart'})
-
-            if amount_paid < Decimal(data.get('total_amount', 0)):
-                if not customer_name:
-                    return JsonResponse({'success': False, 'error': 'Customer name is required for installment payment'})
-                
-                if not customer_phone:
-                    return JsonResponse({'success': False, 'error': 'Customer phone is required for installment payment'})
-            else:
-                if not customer_name:
-                    customer_name = 'Walk-in Customer'
-
-            # Validate products and stock
-            for item in items:
-                try:
-                    product = Product.objects.get(id=item['product_id'])
-                    if product.quantity == 0:
-                        return JsonResponse({
-                            'success': False,
-                            'error': f'{product.name} is OUT OF STOCK'
-                        })
-                    if product.quantity < item['quantity']:
-                        return JsonResponse({
-                            'success': False, 
-                            'error': f'{product.name} has insufficient stock. Available: {product.quantity}, Requested: {item["quantity"]}'
-                        })
-                except Product.DoesNotExist:
-                    return JsonResponse({'success': False, 'error': 'Product not found'})
             
             # Generate invoice number
-            last_sale = Sale.objects.order_by('-id').first()
-            invoice_num = f"INV-{(last_sale.id + 1) if last_sale else 1:06d}"
-            
-            # Calculate totals
-            subtotal = sum(Decimal(item['total']) + Decimal(item['discount']) for item in items)
-            total_discount = sum(Decimal(item['discount']) for item in items)
-            total = subtotal - total_discount
-            balance = total - amount_paid
-            
-            # Determine payment status
-            if balance <= 0:
-                payment_status = 'paid'
-                balance = 0
-            elif amount_paid > 0:
-                payment_status = 'partial'
-            else:
-                payment_status = 'unpaid'
+            invoice_number = f"INV-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
             
             # Create sale
             sale = Sale.objects.create(
-                invoice_number=invoice_num,
+                invoice_number=invoice_number,
                 staff=request.user,
-                customer_name=customer_name,
-                customer_phone=customer_phone,
-                subtotal=subtotal,
-                discount=total_discount,
-                total=total,
-                amount_paid=amount_paid,
-                balance=balance,
-                payment_status=payment_status
+                customer_name=data.get('customer_name', ''),
+                customer_phone=data.get('customer_phone', ''),
+                subtotal=float(data.get('subtotal', 0)),
+                discount=float(data.get('discount', 0)),
+                total=float(data.get('total', 0)),
+                amount_paid=float(data.get('amount_paid', 0)),
+                balance=float(data.get('balance', 0)),
+                payment_status='paid' if float(data.get('balance', 0)) <= 0 else 'partial'
             )
             
-            # Create sale items and update stock
-            for item in items:
+            # Create sale items
+            for item in data.get('items', []):
                 product = Product.objects.get(id=item['product_id'])
-                
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
                     product_name=product.name,
                     quantity=item['quantity'],
-                    price=Decimal(item['price']),
-                    discount=Decimal(item['discount']),
-                    total=Decimal(item['total'])
+                    price=item['price'],
+                    discount=item.get('discount', 0),
+                    total=item['total']
                 )
                 
                 # Update product quantity
                 product.quantity -= item['quantity']
                 product.save()
-                
-                # Record stock movement
-                StockMovement.objects.create(
-                    product=product,
-                    movement_type='out',
-                    quantity=-item['quantity'],
-                    reference=invoice_num,
-                    notes=f'Sale to {customer_name}',
-                    created_by=request.user
-                )
             
-            # Record payment if any
-            if amount_paid > 0:
+            # Create payment record if payment made
+            if float(data.get('amount_paid', 0)) > 0:
                 Payment.objects.create(
                     sale=sale,
-                    amount=amount_paid,
-                    payment_method=payment_method,
+                    amount=float(data.get('amount_paid', 0)),
+                    payment_method=data.get('payment_method', 'cash'),
+                    reference=data.get('reference', ''),
                     created_by=request.user
                 )
             
-            # Clear pending cart after successful sale
-            try:
-                PendingCart.objects.filter(staff=request.user).delete()
-            except Exception as e:
-                print(f"Error clearing pending cart: {e}")
-            
-            # DELETE SAVED CART if this sale came from a saved cart
-            if saved_cart_id:
-                try:
-                    deleted_count = SavedCart.objects.filter(id=saved_cart_id, staff=request.user).delete()
-                    if deleted_count[0] > 0:
-                        print(f"Saved cart ID {saved_cart_id} deleted successfully after sale")
-                except Exception as e:
-                    print(f"Error deleting saved cart: {e}")
+            # Clear pending cart
+            PendingCart.objects.filter(staff=request.user).delete()
             
             return JsonResponse({
                 'success': True,
-                'invoice_number': invoice_num,
-                'sale_id': sale.id
+                'sale_id': sale.id,
+                'invoice_number': invoice_number
             })
             
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
     
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
-
-# ==================== ADMIN DASHBOARD WITH SMART SEARCH ====================
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @login_required
-@user_passes_test(is_admin)
+def view_receipt(request, sale_id):
+    sale = get_object_or_404(Sale, id=sale_id)
+    items = sale.items.all()
+    payments = sale.payments.all()
+    
+    context = {
+        'sale': sale,
+        'items': items,
+        'payments': payments,
+    }
+    return render(request, 'receipt.html', context)
+
+@login_required
+def edit_receipt(request, sale_id):
+    sale = get_object_or_404(Sale, id=sale_id)
+    
+    if request.method == 'POST':
+        # Handle receipt editing logic
+        pass
+    
+    return render(request, 'record_payment.html', {'sale': sale})
+
+# =================== DASHBOARD VIEWS ===================
+@login_required
 def admin_dashboard(request):
     # Get date filter from request
     date_filter = request.GET.get('date_filter', 'today')
-    custom_start = request.GET.get('custom_start')
-    custom_end = request.GET.get('custom_end')
     
-    # Get search queries
-    sales_search = request.GET.get('sales_search', '').strip()
-    stock_search = request.GET.get('stock_search', '').strip()
-    
-    # Parse search keywords
-    sales_keywords = parse_search_query(sales_search)
-    stock_keywords = parse_search_query(stock_search)
-    
-    # Calculate date range based on filter
+    # Calculate date range
     today = timezone.now().date()
     
     if date_filter == 'today':
@@ -319,503 +188,416 @@ def admin_dashboard(request):
         end_date = start_date + timedelta(days=6)
     elif date_filter == 'month':
         start_date = today.replace(day=1)
-        end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        end_date = today
     elif date_filter == 'year':
         start_date = today.replace(month=1, day=1)
-        end_date = today.replace(month=12, day=31)
-    elif date_filter == 'custom' and custom_start and custom_end:
-        start_date = datetime.strptime(custom_start, '%Y-%m-%d').date()
-        end_date = datetime.strptime(custom_end, '%Y-%m-%d').date()
-    else:
-        # Default to today
-        start_date = today
         end_date = today
-        date_filter = 'today'
+    else:
+        custom_start = request.GET.get('custom_start')
+        custom_end = request.GET.get('custom_end')
+        if custom_start and custom_end:
+            try:
+                start_date = datetime.strptime(custom_start, '%Y-%m-%d').date()
+                end_date = datetime.strptime(custom_end, '%Y-%m-%d').date()
+            except ValueError:
+                start_date = today
+                end_date = today
+        else:
+            start_date = today
+            end_date = today
     
-    # Filter sales by date range
-    sales_in_period = Sale.objects.filter(
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date
-    )
+    # Get search queries
+    sales_search = request.GET.get('sales_search', '')
+    stock_search = request.GET.get('stock_search', '')
     
-    # Basic statistics
+    # Statistics
     total_products = Product.objects.count()
+    total_sales = Sale.objects.filter(created_at__date__range=[start_date, end_date]).count()
     low_stock_products = Product.objects.filter(quantity__lte=F('reorder_level')).count()
-    total_sales = sales_in_period.count()
-    total_revenue = sales_in_period.aggregate(Sum('total'))['total__sum'] or 0
-    debtors_count = sales_in_period.filter(balance__gt=0).count()
+    debtors_count = Sale.objects.filter(balance__gt=0).count()
     
-    # Payment method statistics
-    payments_in_period = Payment.objects.filter(
-        created_at__date__gte=start_date,
-        created_at__date__lte=end_date
-    )
+    # Payment statistics
+    cash_payments = Payment.objects.filter(
+        payment_method='cash',
+        created_at__date__range=[start_date, end_date]
+    ).aggregate(total=Sum('amount'))['total'] or 0
     
-    cash_payments = payments_in_period.filter(payment_method='cash').aggregate(Sum('amount'))['amount__sum'] or 0
-    transfer_payments = payments_in_period.filter(payment_method='transfer').aggregate(Sum('amount'))['amount__sum'] or 0
-    card_payments = payments_in_period.filter(payment_method='card').aggregate(Sum('amount'))['amount__sum'] or 0
+    transfer_payments = Payment.objects.filter(
+        payment_method='transfer',
+        created_at__date__range=[start_date, end_date]
+    ).aggregate(total=Sum('amount'))['total'] or 0
     
-    # ==================== RECENT SALES WITH SMART SEARCH ====================
+    card_payments = Payment.objects.filter(
+        payment_method='card',
+        created_at__date__range=[start_date, end_date]
+    ).aggregate(total=Sum('amount'))['total'] or 0
     
-    recent_sales = Sale.objects.select_related('staff').prefetch_related('items').order_by('-created_at')
+    # Total revenue
+    total_revenue = Sale.objects.filter(
+        created_at__date__range=[start_date, end_date]
+    ).aggregate(total=Sum('total'))['total'] or 0
     
-    if sales_keywords:
-        # Build search query for sales
-        search_query = build_search_query(sales_keywords, [
-            'customer_name',
-            'invoice_number',
-        ])
-        
-        # Also search in staff names
-        staff_name_query = Q()
-        for keyword in sales_keywords:
-            if len(keyword) == 1:
-                # Search by first letter of staff first or last name
-                staff_name_query |= Q(staff__first_name__istartswith=keyword)
-                staff_name_query |= Q(staff__last_name__istartswith=keyword)
-            else:
-                # Search anywhere in staff names
-                staff_name_query |= Q(staff__first_name__icontains=keyword)
-                staff_name_query |= Q(staff__last_name__icontains=keyword)
-        
-        # Combine both queries
-        combined_query = search_query | staff_name_query
-        
-        # For multiple keywords, ensure all are matched
-        if len(sales_keywords) > 1:
-            all_keywords_query = Q()
-            for keyword in sales_keywords:
-                single_keyword_query = Q()
-                single_keyword_query |= Q(customer_name__icontains=keyword)
-                single_keyword_query |= Q(invoice_number__icontains=keyword)
-                single_keyword_query |= Q(staff__first_name__icontains=keyword)
-                single_keyword_query |= Q(staff__last_name__icontains=keyword)
-                
-                if all_keywords_query:
-                    all_keywords_query &= single_keyword_query
-                else:
-                    all_keywords_query = single_keyword_query
-            
-            recent_sales = recent_sales.filter(all_keywords_query)[:50]
-        else:
-            recent_sales = recent_sales.filter(combined_query)[:50]
-    else:
-        recent_sales = recent_sales[:10]
+    # Recent sales with search and limit
+    recent_sales = Sale.objects.filter(
+        created_at__date__range=[start_date, end_date]
+    ).select_related('staff').order_by('-created_at')
     
-    # ==================== LOW STOCK WITH SMART SEARCH ====================
+    if sales_search:
+        recent_sales = recent_sales.filter(
+            Q(invoice_number__icontains=sales_search) |
+            Q(customer_name__icontains=sales_search) |
+            Q(staff__username__icontains=sales_search) |
+            Q(customer_phone__icontains=sales_search)
+        )[:50]
     
-    low_stock = Product.objects.filter(quantity__lte=F('reorder_level'))
+    # Low stock items with search and limit
+    low_stock = Product.objects.filter(quantity__lte=F('reorder_level')).select_related('category').order_by('quantity')
     
-    if stock_keywords:
-        # Build search query for products
-        search_query = build_search_query(stock_keywords, [
-            'name',
-            'sku',
-        ])
-        
-        # Also search in category names
-        category_query = Q()
-        for keyword in stock_keywords:
-            if len(keyword) == 1:
-                category_query |= Q(category__name__istartswith=keyword)
-            else:
-                category_query |= Q(category__name__icontains=keyword)
-        
-        combined_query = search_query | category_query
-        
-        # For multiple keywords, ensure all are matched
-        if len(stock_keywords) > 1:
-            all_keywords_query = Q()
-            for keyword in stock_keywords:
-                single_keyword_query = Q()
-                single_keyword_query |= Q(name__icontains=keyword)
-                single_keyword_query |= Q(sku__icontains=keyword)
-                single_keyword_query |= Q(category__name__icontains=keyword)
-                
-                if all_keywords_query:
-                    all_keywords_query &= single_keyword_query
-                else:
-                    all_keywords_query = single_keyword_query
-            
-            low_stock = low_stock.filter(all_keywords_query)[:50]
-        else:
-            low_stock = low_stock.filter(combined_query)[:50]
-    else:
-        low_stock = low_stock[:10]
+    if stock_search:
+        low_stock = low_stock.filter(
+            Q(name__icontains=stock_search) |
+            Q(sku__icontains=stock_search) |
+            Q(category__name__icontains=stock_search)
+        )[:50]
     
     context = {
-        'total_products': total_products,
-        'low_stock_products': low_stock_products,
-        'total_sales': total_sales,
-        'total_revenue': total_revenue,
-        'debtors_count': debtors_count,
-        'recent_sales': recent_sales,
-        'low_stock': low_stock,
-        'cash_payments': cash_payments,
-        'transfer_payments': transfer_payments,
-        'card_payments': card_payments,
         'date_filter': date_filter,
         'start_date': start_date,
         'end_date': end_date,
         'today': today,
+        'total_products': total_products,
+        'total_sales': total_sales,
+        'low_stock_products': low_stock_products,
+        'debtors_count': debtors_count,
+        'cash_payments': cash_payments,
+        'transfer_payments': transfer_payments,
+        'card_payments': card_payments,
+        'total_revenue': total_revenue,
+        'recent_sales': recent_sales,
+        'low_stock': low_stock,
         'sales_search': sales_search,
         'stock_search': stock_search,
     }
+    
     return render(request, 'admin_dashboard.html', context)
 
-# ==================== STAFF MANAGEMENT WITH SMART SEARCH ====================
-
+# =================== STAFF MANAGEMENT VIEWS ===================
 @login_required
-@user_passes_test(is_admin)
 def register_staff(request):
     if request.method == 'POST':
-        form = StaffRegistrationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            messages.success(request, f'Staff {user.username} registered successfully!')
+        try:
+            username = request.POST.get('username')
+            email = request.POST.get('email')
+            first_name = request.POST.get('first_name')
+            last_name = request.POST.get('last_name')
+            password = request.POST.get('password')
+            role = request.POST.get('role', 'staff')
+            phone = request.POST.get('phone', '')
+            
+            # Create user
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                role=role,
+                phone=phone,
+                is_staff=True
+            )
+            
+            messages.success(request, f'Staff member {username} created successfully!')
             return redirect('staff_list')
-    else:
-        form = StaffRegistrationForm()
+            
+        except Exception as e:
+            messages.error(request, f'Error creating staff: {str(e)}')
     
-    return render(request, 'register_staff.html', {'form': form})
+    return render(request, 'register_staff.html')
 
 @login_required
-@user_passes_test(is_admin)
 def staff_list(request):
-    search_query = request.GET.get('search', '').strip()
-    keywords = parse_search_query(search_query)
+    staff = User.objects.filter(is_staff=True).order_by('-date_joined')
     
-    staff = User.objects.all()
+    search_query = request.GET.get('search', '')
+    if search_query:
+        staff = staff.filter(
+            Q(username__icontains=search_query) |
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query) |
+            Q(email__icontains=search_query) |
+            Q(phone__icontains=search_query) |
+            Q(role__icontains=search_query)
+        )[:50]
     
-    if keywords:
-        # Build smart search query
-        search_q = Q()
-        
-        for keyword in keywords:
-            keyword_query = Q()
-            
-            # Single character search (first letter)
-            if len(keyword) == 1:
-                keyword_query |= Q(username__istartswith=keyword)
-                keyword_query |= Q(first_name__istartswith=keyword)
-                keyword_query |= Q(last_name__istartswith=keyword)
-                keyword_query |= Q(email__istartswith=keyword)
-                keyword_query |= Q(role__istartswith=keyword)
-            else:
-                # Multi-character keyword
-                # Try exact match for role
-                keyword_query |= Q(role__iexact=keyword)
-                
-                # Try starts with
-                keyword_query |= Q(username__istartswith=keyword)
-                keyword_query |= Q(first_name__istartswith=keyword)
-                keyword_query |= Q(last_name__istartswith=keyword)
-                keyword_query |= Q(email__istartswith=keyword)
-                
-                # Try contains
-                keyword_query |= Q(username__icontains=keyword)
-                keyword_query |= Q(first_name__icontains=keyword)
-                keyword_query |= Q(last_name__icontains=keyword)
-                keyword_query |= Q(email__icontains=keyword)
-                keyword_query |= Q(role__icontains=keyword)
-            
-            # Add to main query
-            if search_q:
-                search_q &= keyword_query
-            else:
-                search_q = keyword_query
-        
-        # If multiple keywords, ensure all are matched somewhere
-        if len(keywords) > 1:
-            all_keywords_query = Q()
-            for keyword in keywords:
-                single_keyword_query = Q()
-                single_keyword_query |= Q(username__icontains=keyword)
-                single_keyword_query |= Q(first_name__icontains=keyword)
-                single_keyword_query |= Q(last_name__icontains=keyword)
-                single_keyword_query |= Q(email__icontains=keyword)
-                single_keyword_query |= Q(role__icontains=keyword)
-                
-                if all_keywords_query:
-                    all_keywords_query &= single_keyword_query
-                else:
-                    all_keywords_query = single_keyword_query
-            
-            staff = staff.filter(all_keywords_query)
-        else:
-            staff = staff.filter(search_q)
-    
-    staff = staff.order_by('-date_joined')
-    
-    return render(request, 'staff_list.html', {
+    context = {
         'staff': staff,
-        'search_query': search_query
-    })
-
-# ==================== PRODUCT MANAGEMENT WITH SMART SEARCH ====================
+        'search_query': search_query,
+    }
+    return render(request, 'staff_list.html', context)
 
 @login_required
-@user_passes_test(is_admin)
+@login_required
+def edit_staff(request):
+    """Handle AJAX request to edit staff member"""
+    if request.method == 'POST':
+        try:
+            user_id = request.POST.get('user_id')
+            user = User.objects.get(id=user_id)
+            
+            # Update user fields
+            user.username = request.POST.get('username')
+            user.email = request.POST.get('email')
+            user.first_name = request.POST.get('first_name', '')
+            user.last_name = request.POST.get('last_name', '')
+            user.phone = request.POST.get('phone', '')
+            user.role = request.POST.get('role', 'staff')
+            user.is_active = request.POST.get('is_active') == 'true'
+            
+            user.save()
+            
+            return JsonResponse({'success': True})
+            
+        except User.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User not found'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+# =================== PRODUCT VIEWS ===================
+@login_required
 def product_list(request):
-    search_query = request.GET.get('search', '').strip()
-    keywords = parse_search_query(search_query)
+    products = Product.objects.all().select_related('category', 'supplier').order_by('-created_at')
     
-    products = Product.objects.select_related('category', 'supplier').all()
+    search_query = request.GET.get('search', '')
+    if search_query:
+        products = products.filter(
+            Q(name__icontains=search_query) |
+            Q(sku__icontains=search_query) |
+            Q(category__name__icontains=search_query) |
+            Q(description__icontains=search_query) |
+            Q(supplier__name__icontains=search_query)
+        )[:50]
     
-    if keywords:
-        # Build smart search query
-        search_q = Q()
-        
-        for keyword in keywords:
-            keyword_query = Q()
-            
-            # Single character search
-            if len(keyword) == 1:
-                keyword_query |= Q(name__istartswith=keyword)
-                keyword_query |= Q(sku__istartswith=keyword)
-            else:
-                # Multi-character keyword
-                # Try exact match
-                keyword_query |= Q(name__iexact=keyword)
-                keyword_query |= Q(sku__iexact=keyword)
-                
-                # Try starts with
-                keyword_query |= Q(name__istartswith=keyword)
-                keyword_query |= Q(sku__istartswith=keyword)
-                
-                # Try contains
-                keyword_query |= Q(name__icontains=keyword)
-                keyword_query |= Q(sku__icontains=keyword)
-                keyword_query |= Q(description__icontains=keyword)
-            
-            # Add to main query
-            if search_q:
-                search_q &= keyword_query
-            else:
-                search_q = keyword_query
-        
-        # Also search in category and supplier names
-        related_query = Q()
-        for keyword in keywords:
-            if len(keyword) == 1:
-                related_query |= Q(category__name__istartswith=keyword)
-                related_query |= Q(supplier__name__istartswith=keyword)
-            else:
-                related_query |= Q(category__name__icontains=keyword)
-                related_query |= Q(supplier__name__icontains=keyword)
-        
-        # Combine queries
-        combined_query = search_q | related_query
-        
-        # If multiple keywords, ensure all are matched
-        if len(keywords) > 1:
-            all_keywords_query = Q()
-            for keyword in keywords:
-                single_keyword_query = Q()
-                single_keyword_query |= Q(name__icontains=keyword)
-                single_keyword_query |= Q(sku__icontains=keyword)
-                single_keyword_query |= Q(description__icontains=keyword)
-                single_keyword_query |= Q(category__name__icontains=keyword)
-                single_keyword_query |= Q(supplier__name__icontains=keyword)
-                
-                if all_keywords_query:
-                    all_keywords_query &= single_keyword_query
-                else:
-                    all_keywords_query = single_keyword_query
-            
-            products = products.filter(all_keywords_query)
-        else:
-            products = products.filter(combined_query)
+    # Get categories and suppliers for the edit modal
+    categories = Category.objects.all()
+    suppliers = Supplier.objects.all()
     
-    return render(request, 'product_list.html', {
+    context = {
         'products': products,
-        'search_query': search_query
-    })
+        'search_query': search_query,
+        'categories': categories,
+        'suppliers': suppliers,
+        # 'categories_json': json.dumps([{'id': c.id, 'name': c.name} for c in categories]),
+        # 'suppliers_json': json.dumps([{'id': s.id, 'name': s.name} for s in suppliers]),
+    }
+    return render(request, 'product_list.html', context)
 
 @login_required
-@user_passes_test(is_admin)
 def add_product(request):
     if request.method == 'POST':
-        form = ProductForm(request.POST, request.FILES)
-        if form.is_valid():
-            product = form.save()
-            messages.success(request, f'Product {product.name} added successfully!')
+        try:
+            # Get form data
+            name = request.POST.get('name')
+            category_id = request.POST.get('category')
+            supplier_id = request.POST.get('supplier')
+            description = request.POST.get('description', '')
+            price = request.POST.get('price')
+            cost_price = request.POST.get('cost_price', 0)
+            quantity = request.POST.get('quantity', 0)
+            reorder_level = request.POST.get('reorder_level', 10)
+            image = request.FILES.get('image')
+            
+            # Get category and supplier
+            category = Category.objects.get(id=category_id) if category_id else None
+            supplier = Supplier.objects.get(id=supplier_id) if supplier_id else None
+            
+            # Create product
+            product = Product.objects.create(
+                name=name,
+                category=category,
+                supplier=supplier,
+                description=description,
+                price=price,
+                cost_price=cost_price,
+                quantity=quantity,
+                reorder_level=reorder_level,
+                image=image
+            )
+            
+            messages.success(request, f'Product {name} added successfully!')
             return redirect('product_list')
-    else:
-        form = ProductForm()
+            
+        except Exception as e:
+            messages.error(request, f'Error adding product: {str(e)}')
     
-    return render(request, 'product_form.html', {'form': form, 'action': 'Add'})
+    categories = Category.objects.all()
+    suppliers = Supplier.objects.all()
+    
+    context = {
+        'categories': categories,
+        'suppliers': suppliers,
+    }
+    return render(request, 'product_form.html', context)
 
 @login_required
-@user_passes_test(is_admin)
 def edit_product(request, pk):
-    product = get_object_or_404(Product, pk=pk)
-    if request.method == 'POST':
-        form = ProductForm(request.POST, request.FILES, instance=product)
-        if form.is_valid():
-            form.save()
-            messages.success(request, f'Product {product.name} updated successfully!')
-            return redirect('product_list')
-    else:
-        form = ProductForm(instance=product)
+    product = get_object_or_404(Product, id=pk)
     
-    return render(request, 'product_form.html', {'form': form, 'action': 'Edit'})
-
-@login_required
-@user_passes_test(is_admin)
-def delete_product(request, pk):
-    product = get_object_or_404(Product, pk=pk)
     if request.method == 'POST':
+        try:
+            product.name = request.POST.get('name')
+            
+            # Handle category
+            category_id = request.POST.get('category')
+            new_category = request.POST.get('new_category')
+            
+            if new_category:
+                category, created = Category.objects.get_or_create(name=new_category)
+                product.category = category
+            elif category_id:
+                product.category = Category.objects.get(id=category_id)
+            else:
+                product.category = None
+            
+            # Handle supplier
+            supplier_id = request.POST.get('supplier')
+            new_supplier = request.POST.get('new_supplier')
+            
+            if new_supplier:
+                supplier, created = Supplier.objects.get_or_create(name=new_supplier)
+                product.supplier = supplier
+            elif supplier_id:
+                product.supplier = Supplier.objects.get(id=supplier_id)
+            else:
+                product.supplier = None
+            
+            product.description = request.POST.get('description', '')
+            product.price = request.POST.get('price')
+            product.cost_price = request.POST.get('cost_price', 0)
+            product.quantity = request.POST.get('quantity', 0)
+            product.reorder_level = request.POST.get('reorder_level', 10)
+            
+            # Handle image
+            if 'image' in request.FILES:
+                product.image = request.FILES['image']
+            
+            # Clear image if requested
+            if request.POST.get('clear_image'):
+                if product.image:
+                    product.image.delete(save=False)
+                product.image = None
+            
+            product.save()
+            
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': True})
+            else:
+                messages.success(request, f'Product {product.name} updated successfully!')
+                return redirect('product_list')
+            
+        except Exception as e:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'error': str(e)})
+            else:
+                messages.error(request, f'Error updating product: {str(e)}')
+    
+    # For AJAX requests, we don't render template
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': False, 'error': 'Invalid request'})
+    
+    # Regular request - render template
+    categories = Category.objects.all()
+    suppliers = Supplier.objects.all()
+    
+    context = {
+        'product': product,
+        'categories': categories,
+        'suppliers': suppliers,
+        'action': 'Edit',
+        'categories_json': json.dumps([{'id': c.id, 'name': c.name} for c in categories]),
+        'suppliers_json': json.dumps([{'id': s.id, 'name': s.name} for s in suppliers]),
+    }
+    return render(request, 'edit_product.html', context)
+@login_required
+def delete_product(request, pk):
+    product = get_object_or_404(Product, id=pk)
+    
+    if request.method == 'POST':
+        product_name = product.name
         product.delete()
-        messages.success(request, 'Product deleted successfully!')
+        messages.success(request, f'Product {product_name} deleted successfully!')
         return redirect('product_list')
+    
     return render(request, 'product_confirm_delete.html', {'product': product})
 
-# ==================== DEBTOR MANAGEMENT WITH SMART SEARCH ====================
-
+# =================== DEBTORS VIEWS ===================
 @login_required
-@user_passes_test(is_staff_or_admin)
 def debtors_list(request):
-    search_query = request.GET.get('search', '').strip()
-    keywords = parse_search_query(search_query)
+    debtors = Sale.objects.filter(balance__gt=0).select_related('staff').prefetch_related('payments').order_by('-created_at')
     
-    debtors = Sale.objects.filter(balance__gt=0).select_related('staff').prefetch_related('payments')
+    search_query = request.GET.get('search', '')
+    if search_query:
+        debtors = debtors.filter(
+            Q(invoice_number__icontains=search_query) |
+            Q(customer_name__icontains=search_query) |
+            Q(customer_phone__icontains=search_query) |
+            Q(staff__username__icontains=search_query)
+        )[:50]
     
-    if keywords:
-        # Build smart search query
-        search_q = Q()
-        
-        for keyword in keywords:
-            keyword_query = Q()
-            
-            # Single character search
-            if len(keyword) == 1:
-                keyword_query |= Q(customer_name__istartswith=keyword)
-                keyword_query |= Q(customer_phone__istartswith=keyword)
-                keyword_query |= Q(invoice_number__istartswith=keyword)
-            else:
-                # Multi-character keyword
-                # Try exact match
-                keyword_query |= Q(customer_name__iexact=keyword)
-                keyword_query |= Q(invoice_number__iexact=keyword)
-                
-                # Try starts with
-                keyword_query |= Q(customer_name__istartswith=keyword)
-                keyword_query |= Q(customer_phone__istartswith=keyword)
-                keyword_query |= Q(invoice_number__istartswith=keyword)
-                
-                # Try contains
-                keyword_query |= Q(customer_name__icontains=keyword)
-                keyword_query |= Q(customer_phone__icontains=keyword)
-                keyword_query |= Q(invoice_number__icontains=keyword)
-            
-            # Add to main query
-            if search_q:
-                search_q &= keyword_query
-            else:
-                search_q = keyword_query
-        
-        # Also search in staff names
-        staff_query = Q()
-        for keyword in keywords:
-            if len(keyword) == 1:
-                staff_query |= Q(staff__first_name__istartswith=keyword)
-                staff_query |= Q(staff__last_name__istartswith=keyword)
-            else:
-                staff_query |= Q(staff__first_name__icontains=keyword)
-                staff_query |= Q(staff__last_name__icontains=keyword)
-        
-        # Combine queries
-        combined_query = search_q | staff_query
-        
-        # If multiple keywords, ensure all are matched
-        if len(keywords) > 1:
-            all_keywords_query = Q()
-            for keyword in keywords:
-                single_keyword_query = Q()
-                single_keyword_query |= Q(customer_name__icontains=keyword)
-                single_keyword_query |= Q(customer_phone__icontains=keyword)
-                single_keyword_query |= Q(invoice_number__icontains=keyword)
-                single_keyword_query |= Q(staff__first_name__icontains=keyword)
-                single_keyword_query |= Q(staff__last_name__icontains=keyword)
-                
-                if all_keywords_query:
-                    all_keywords_query &= single_keyword_query
-                else:
-                    all_keywords_query = single_keyword_query
-            
-            debtors = debtors.filter(all_keywords_query)
-        else:
-            debtors = debtors.filter(combined_query)
-    
-    debtors = debtors.order_by('-created_at')
-    
-    return render(request, 'debtors_list.html', {
+    context = {
         'debtors': debtors,
-        'search_query': search_query
-    })
+        'search_query': search_query,
+    }
+    return render(request, 'debtors_list.html', context)
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def record_payment(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)
     
     if request.method == 'POST':
-        form = PaymentForm(request.POST)
-        if form.is_valid():
-            payment = form.save(commit=False)
-            payment.sale = sale
-            payment.created_by = request.user
+        try:
+            amount = float(request.POST.get('amount', 0))
+            payment_method = request.POST.get('payment_method', 'cash')
+            reference = request.POST.get('reference', '')
+            notes = request.POST.get('notes', '')
             
-            # Validate payment amount
-            if payment.amount > sale.balance:
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return JsonResponse({'success': False, 'error': f'Payment amount (₦{payment.amount}) cannot exceed balance of ₦{sale.balance}'})
-                else:
-                    messages.error(request, f'Payment amount (₦{payment.amount}) cannot exceed balance of ₦{sale.balance}')
-                    return render(request, 'record_payment.html', {'form': form, 'sale': sale})
+            if amount <= 0:
+                messages.error(request, 'Amount must be greater than 0')
+                return redirect('record_payment', sale_id=sale_id)
             
-            if payment.amount <= 0:
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return JsonResponse({'success': False, 'error': 'Payment amount must be greater than zero'})
-                else:
-                    messages.error(request, 'Payment amount must be greater than zero')
-                    return render(request, 'record_payment.html', {'form': form, 'sale': sale})
+            # Create payment
+            payment = Payment.objects.create(
+                sale=sale,
+                amount=amount,
+                payment_method=payment_method,
+                reference=reference,
+                notes=notes,
+                created_by=request.user
+            )
             
-            payment.save()
-            
-            # Update sale balance
-            sale.amount_paid += payment.amount
+            # Update sale
+            sale.amount_paid += amount
             sale.balance = sale.total - sale.amount_paid
             
             if sale.balance <= 0:
                 sale.payment_status = 'paid'
-                sale.balance = 0
             else:
                 sale.payment_status = 'partial'
             
             sale.save()
             
-            # Return JSON response for AJAX requests
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({
-                    'success': True,
-                    'message': f'Payment of ₦{payment.amount} recorded successfully!',
-                    'new_balance': float(sale.balance),
-                    'payment_status': sale.payment_status
-                })
-            else:
-                messages.success(request, f'Payment of ₦{payment.amount} recorded successfully!')
-                return redirect('view_receipt', sale_id=sale.id)
-    else:
-        form = PaymentForm()
+            messages.success(request, f'Payment of ₦{amount:,.2f} recorded successfully!')
+            return redirect('debtors_list')
+            
+        except Exception as e:
+            messages.error(request, f'Error recording payment: {str(e)}')
     
-    return render(request, 'record_payment.html', {'form': form, 'sale': sale})
-
-# ==================== PAYMENT HISTORY VIEW ====================
+    context = {
+        'sale': sale,
+    }
+    return render(request, 'record_payment.html', context)
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def debtor_payment_history(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)
     payments = sale.payments.all().order_by('-created_at')
@@ -824,73 +606,23 @@ def debtor_payment_history(request, sale_id):
         'sale': sale,
         'payments': payments,
     }
-    return render(request, 'debtor_payment_history.html', context)
+    return render(request, 'debtors_list.html', context)
 
-# ==================== RECEIPT VIEWS ====================
-
+# =================== CART VIEWS ===================
 @login_required
-def view_receipt(request, sale_id):
-    sale = get_object_or_404(Sale, id=sale_id)
-    return render(request, 'receipt.html', {'sale': sale})
-
-@login_required
-def edit_receipt(request, sale_id):
-    sale = get_object_or_404(Sale, id=sale_id)
-    
-    if request.method == 'POST':
-        customer_name = request.POST.get('customer_name', '').strip()
-        customer_phone = request.POST.get('customer_phone', '').strip()
-        
-        if not customer_name:
-            messages.error(request, 'Customer name is required')
-            return render(request, 'edit_receipt.html', {'sale': sale})
-        
-        if not customer_phone:
-            messages.error(request, 'Customer phone is required')
-            return render(request, 'edit_receipt.html', {'sale': sale})
-        
-        sale.customer_name = customer_name
-        sale.customer_phone = customer_phone
-        sale.save()
-        
-        messages.success(request, 'Receipt updated successfully!')
-        return redirect('view_receipt', sale_id=sale.id)
-    
-    return render(request, 'edit_receipt.html', {'sale': sale})
-
-# ==================== EDIT STAFF ====================
-
-@login_required
-@user_passes_test(is_admin)
-@csrf_protect
-def edit_staff(request):
+def save_pending_cart(request):
     if request.method == 'POST':
         try:
-            user_id = request.POST.get('user_id')
-            username = request.POST.get('username')
-            email = request.POST.get('email')
-            first_name = request.POST.get('first_name')
-            last_name = request.POST.get('last_name')
-            phone = request.POST.get('phone')
-            role = request.POST.get('role')
-            is_active = request.POST.get('is_active') == 'true'
+            data = json.loads(request.body)
             
-            user = get_object_or_404(User, id=user_id)
+            # Delete existing pending cart
+            PendingCart.objects.filter(staff=request.user).delete()
             
-            if User.objects.filter(username=username).exclude(id=user_id).exists():
-                return JsonResponse({'success': False, 'error': 'Username already exists!'})
-            
-            if User.objects.filter(email=email).exclude(id=user_id).exists():
-                return JsonResponse({'success': False, 'error': 'Email already exists!'})
-            
-            user.username = username
-            user.email = email
-            user.first_name = first_name
-            user.last_name = last_name
-            user.phone = phone
-            user.role = role
-            user.is_active = is_active
-            user.save()
+            # Create new pending cart
+            PendingCart.objects.create(
+                staff=request.user,
+                cart_data=data
+            )
             
             return JsonResponse({'success': True})
             
@@ -899,45 +631,7 @@ def edit_staff(request):
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
-# ==================== CART MANAGEMENT ====================
-
 @login_required
-@user_passes_test(is_staff_or_admin)
-def save_pending_cart(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            cart_data = {
-                'items': data.get('items', []),
-                'customer_name': data.get('customer_name', ''),
-                'customer_phone': data.get('customer_phone', ''),
-                'payment_type': data.get('payment_type', 'full'),
-                'payment_method': data.get('payment_method', 'cash'),
-                'amount_paid': data.get('amount_paid', 0),
-            }
-            
-            # Delete any existing pending cart for this staff
-            PendingCart.objects.filter(staff=request.user).delete()
-            
-            # Create new pending cart
-            pending_cart = PendingCart.objects.create(
-                staff=request.user,
-                cart_data=cart_data
-            )
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'Cart saved successfully!',
-                'cart_id': pending_cart.id
-            })
-            
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-    
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
-
-@login_required
-@user_passes_test(is_staff_or_admin)
 def load_pending_cart(request):
     try:
         pending_cart = PendingCart.objects.filter(staff=request.user).first()
@@ -945,422 +639,517 @@ def load_pending_cart(request):
         if pending_cart:
             return JsonResponse({
                 'success': True,
-                'cart_data': pending_cart.cart_data,
-                'cart_id': pending_cart.id
+                'cart_data': pending_cart.cart_data
             })
         else:
-            return JsonResponse({'success': False, 'error': 'No pending cart found'})
+            return JsonResponse({
+                'success': True,
+                'cart_data': None
+            })
             
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def delete_pending_cart(request):
     if request.method == 'POST':
         try:
-            deleted_count = PendingCart.objects.filter(staff=request.user).delete()
-            return JsonResponse({
-                'success': True,
-                'message': 'Pending cart cleared successfully!'
-            })
+            PendingCart.objects.filter(staff=request.user).delete()
+            return JsonResponse({'success': True})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
     
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
-
-# ==================== SAVED CARTS WITH SMART SEARCH ====================
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def saved_carts_list(request):
-    search_query = request.GET.get('search', '').strip()
-    keywords = parse_search_query(search_query)
+    saved_carts = SavedCart.objects.filter(staff=request.user).order_by('-created_at')
     
-    saved_carts = SavedCart.objects.filter(staff=request.user)
-    
-    if keywords:
-        # Build smart search query for cart names
-        search_q = Q()
-        
-        for keyword in keywords:
-            keyword_query = Q()
-            
-            # Single character search
-            if len(keyword) == 1:
-                keyword_query |= Q(cart_name__istartswith=keyword)
-            else:
-                # Multi-character keyword
-                keyword_query |= Q(cart_name__iexact=keyword)
-                keyword_query |= Q(cart_name__istartswith=keyword)
-                keyword_query |= Q(cart_name__icontains=keyword)
-            
-            # Add to main query
-            if search_q:
-                search_q &= keyword_query
-            else:
-                search_q = keyword_query
-        
-        # First filter by cart_name
-        saved_carts = saved_carts.filter(search_q)
-        
-        # If we have carts and keywords, also filter by customer name in cart_data
-        if saved_carts.exists() and keywords:
-            filtered_carts = []
-            for cart in saved_carts:
-                cart_data = cart.cart_data
-                include_cart = False
-                
-                # Check cart name (already filtered, but double-check)
-                cart_name_lower = cart.cart_name.lower()
-                
-                # Check all keywords
-                matches_all = True
-                for keyword in keywords:
-                    if len(keyword) == 1:
-                        # Check if cart name starts with this letter
-                        if not cart_name_lower.startswith(keyword):
-                            matches_all = False
-                            break
-                    else:
-                        # Check if keyword is in cart name
-                        if keyword not in cart_name_lower:
-                            # Also check customer name if available
-                            if 'customer_name' in cart_data and cart_data['customer_name']:
-                                customer_name = cart_data['customer_name'].lower()
-                                if keyword not in customer_name:
-                                    matches_all = False
-                                    break
-                            else:
-                                matches_all = False
-                                break
-                
-                if matches_all:
-                    filtered_carts.append(cart.id)
-            
-            # Filter queryset by IDs
-            saved_carts = saved_carts.filter(id__in=filtered_carts)
-    
-    saved_carts = saved_carts.order_by('-created_at')
-    
-    return render(request, 'saved_carts_list.html', {
+    context = {
         'saved_carts': saved_carts,
-        'search_query': search_query
-    })
+    }
+    return render(request, 'saved_carts_list.html', context)
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def save_cart(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            cart_name = data.get('cart_name', 'Unsaved Cart').strip()
+            cart_name = data.get('cart_name', 'Unsaved Cart')
             
-            if not cart_name:
-                cart_name = "Unsaved Cart"
-            
-            cart_data = {
-                'items': data.get('items', []),
-                'customer_name': data.get('customer_name', ''),
-                'customer_phone': data.get('customer_phone', ''),
-                'payment_type': data.get('payment_type', 'full'),
-                'payment_method': data.get('payment_method', 'cash'),
-                'amount_paid': data.get('amount_paid', 0),
-            }
-            
+            # Save cart
             saved_cart = SavedCart.objects.create(
                 staff=request.user,
                 cart_name=cart_name,
-                cart_data=cart_data
+                cart_data=data.get('cart_data', {})
             )
             
             return JsonResponse({
                 'success': True,
-                'message': 'Cart saved successfully!',
-                'cart_id': saved_cart.id
+                'cart_id': saved_cart.id,
+                'cart_name': saved_cart.cart_name
             })
             
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
     
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def load_saved_cart(request, cart_id):
     try:
-        saved_cart = get_object_or_404(SavedCart, id=cart_id, staff=request.user)
+        saved_cart = SavedCart.objects.get(id=cart_id, staff=request.user)
         
         return JsonResponse({
             'success': True,
             'cart_data': saved_cart.cart_data,
             'cart_name': saved_cart.cart_name
         })
-            
+        
+    except SavedCart.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Cart not found'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def delete_saved_cart(request, cart_id):
     if request.method == 'POST':
         try:
-            saved_cart = get_object_or_404(SavedCart, id=cart_id, staff=request.user)
-            cart_name = saved_cart.cart_name
+            saved_cart = SavedCart.objects.get(id=cart_id, staff=request.user)
             saved_cart.delete()
             
-            return JsonResponse({
-                'success': True,
-                'message': f'Cart "{cart_name}" deleted successfully!'
-            })
+            return JsonResponse({'success': True})
+        except SavedCart.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Cart not found'})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
     
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @login_required
-@user_passes_test(is_staff_or_admin)
 def view_saved_cart(request, cart_id):
     saved_cart = get_object_or_404(SavedCart, id=cart_id, staff=request.user)
-    return render(request, 'saved_cart_detail.html', {'saved_cart': saved_cart})
+    
+    context = {
+        'saved_cart': saved_cart,
+    }
+    return render(request, 'saved_cart_detail.html', context)
 
-# ==================== REFUND REQUESTS WITH SMART SEARCH ====================
+# =================== REFUND VIEWS ===================
+@login_required
+def refund_requests_list(request):
+    if request.user.role == 'admin':
+        refunds = RefundRequest.objects.all().select_related('created_by', 'approved_by').order_by('-request_date')
+    else:
+        refunds = RefundRequest.objects.filter(created_by=request.user).order_by('-request_date')
+    
+    context = {
+        'refunds': refunds,
+    }
+    return render(request, 'refund_requests_list.html', context)
 
 @login_required
-@user_passes_test(is_staff_or_admin)
-def refund_requests_list(request):
-    search_query = request.GET.get('search', '').strip()
-    keywords = parse_search_query(search_query)
+def create_refund_request(request):
+    if request.method == 'POST':
+        try:
+            customer_name = request.POST.get('customer_name')
+            customer_phone = request.POST.get('customer_phone')
+            reason = request.POST.get('reason')
+            amount = request.POST.get('amount')
+            
+            refund = RefundRequest.objects.create(
+                customer_name=customer_name,
+                customer_phone=customer_phone,
+                reason=reason,
+                amount=amount,
+                created_by=request.user
+            )
+            
+            messages.success(request, 'Refund request created successfully!')
+            return redirect('refund_requests_list')
+            
+        except Exception as e:
+            messages.error(request, f'Error creating refund request: {str(e)}')
     
-    refund_requests = RefundRequest.objects.all()
+    return render(request, 'refund_request_form.html')
+
+@login_required
+def edit_refund_request(request, pk):
+    refund = get_object_or_404(RefundRequest, id=pk)
     
-    if keywords:
-        # Build smart search query
-        search_q = Q()
-        
-        for keyword in keywords:
-            keyword_query = Q()
+    # Check if user can edit
+    if not refund.can_edit() or (refund.created_by != request.user and request.user.role != 'admin'):
+        return JsonResponse({'success': False, 'error': 'You cannot edit this refund request'})
+    
+    if request.method == 'POST':
+        try:
+            refund.customer_name = request.POST.get('customer_name')
+            refund.customer_phone = request.POST.get('customer_phone')
+            refund.reason = request.POST.get('reason')
+            refund.amount = request.POST.get('amount')
+            refund.save()
             
-            # Single character search
-            if len(keyword) == 1:
-                keyword_query |= Q(customer_name__istartswith=keyword)
-                keyword_query |= Q(customer_phone__istartswith=keyword)
-                keyword_query |= Q(status__istartswith=keyword)
-            else:
-                # Multi-character keyword
-                # Try exact match for status
-                keyword_query |= Q(status__iexact=keyword)
-                
-                # Try starts with
-                keyword_query |= Q(customer_name__istartswith=keyword)
-                keyword_query |= Q(customer_phone__istartswith=keyword)
-                keyword_query |= Q(reason__istartswith=keyword)
-                
-                # Try contains
-                keyword_query |= Q(customer_name__icontains=keyword)
-                keyword_query |= Q(customer_phone__icontains=keyword)
-                keyword_query |= Q(reason__icontains=keyword)
-                keyword_query |= Q(status__icontains=keyword)
+            return JsonResponse({'success': True})
             
-            # Add to main query
-            if search_q:
-                search_q &= keyword_query
-            else:
-                search_q = keyword_query
-        
-        # Also search in created_by user names
-        user_query = Q()
-        for keyword in keywords:
-            if len(keyword) == 1:
-                user_query |= Q(created_by__first_name__istartswith=keyword)
-                user_query |= Q(created_by__last_name__istartswith=keyword)
-                user_query |= Q(created_by__username__istartswith=keyword)
-            else:
-                user_query |= Q(created_by__first_name__icontains=keyword)
-                user_query |= Q(created_by__last_name__icontains=keyword)
-                user_query |= Q(created_by__username__icontains=keyword)
-        
-        combined_query = search_q | user_query
-        
-        # If multiple keywords, ensure all are matched
-        if len(keywords) > 1:
-            all_keywords_query = Q()
-            for keyword in keywords:
-                single_keyword_query = Q()
-                single_keyword_query |= Q(customer_name__icontains=keyword)
-                single_keyword_query |= Q(customer_phone__icontains=keyword)
-                single_keyword_query |= Q(reason__icontains=keyword)
-                single_keyword_query |= Q(status__icontains=keyword)
-                single_keyword_query |= Q(created_by__first_name__icontains=keyword)
-                single_keyword_query |= Q(created_by__last_name__icontains=keyword)
-                single_keyword_query |= Q(created_by__username__icontains=keyword)
-                
-                if all_keywords_query:
-                    all_keywords_query &= single_keyword_query
-                else:
-                    all_keywords_query = single_keyword_query
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+@login_required
+def approve_refund_request(request, pk):
+    if request.method == 'POST':
+        try:
+            refund = RefundRequest.objects.get(id=pk)
             
-            refund_requests = refund_requests.filter(all_keywords_query)
+            if not refund.can_approve_decline(request.user):
+                messages.error(request, 'You are not authorized to approve refunds')
+                return redirect('refund_requests_list')
+            
+            refund.status = 'approved'
+            refund.approved_by = request.user
+            refund.approved_date = timezone.now()
+            refund.save()
+            
+            messages.success(request, 'Refund request approved successfully!')
+            
+        except RefundRequest.DoesNotExist:
+            messages.error(request, 'Refund request not found')
+        except Exception as e:
+            messages.error(request, f'Error approving refund: {str(e)}')
+    
+    return redirect('refund_requests_list')
+
+@login_required
+def decline_refund_request(request, pk):
+    if request.method == 'POST':
+        try:
+            refund = RefundRequest.objects.get(id=pk)
+            
+            if not refund.can_approve_decline(request.user):
+                messages.error(request, 'You are not authorized to decline refunds')
+                return redirect('refund_requests_list')
+            
+            refund.status = 'declined'
+            refund.approved_by = request.user
+            refund.approved_date = timezone.now()
+            refund.save()
+            
+            messages.success(request, 'Refund request declined')
+            
+        except RefundRequest.DoesNotExist:
+            messages.error(request, 'Refund request not found')
+        except Exception as e:
+            messages.error(request, f'Error declining refund: {str(e)}')
+    
+    return redirect('refund_requests_list')
+
+# =================== REAL-TIME SEARCH API VIEWS ===================
+@login_required
+def search_sales_api(request):
+    """API endpoint for real-time sales search in dashboard"""
+    search_term = request.GET.get('q', '')
+    date_filter = request.GET.get('date_filter', 'today')
+    
+    # Calculate date range
+    today = timezone.now().date()
+    
+    if date_filter == 'today':
+        start_date = today
+        end_date = today
+    elif date_filter == 'week':
+        start_date = today - timedelta(days=today.weekday())
+        end_date = start_date + timedelta(days=6)
+    elif date_filter == 'month':
+        start_date = today.replace(day=1)
+        end_date = today
+    elif date_filter == 'year':
+        start_date = today.replace(month=1, day=1)
+        end_date = today
+    else:
+        custom_start = request.GET.get('custom_start')
+        custom_end = request.GET.get('custom_end')
+        if custom_start and custom_end:
+            try:
+                start_date = datetime.strptime(custom_start, '%Y-%m-%d').date()
+                end_date = datetime.strptime(custom_end, '%Y-%m-%d').date()
+            except ValueError:
+                start_date = today
+                end_date = today
         else:
-            refund_requests = refund_requests.filter(combined_query)
+            start_date = today
+            end_date = today
     
-    # Staff can only see their own requests, admin can see all
-    if request.user.role != 'admin' and not request.user.is_superuser:
-        refund_requests = refund_requests.filter(created_by=request.user)
+    # Filter sales
+    sales = Sale.objects.filter(
+        created_at__date__range=[start_date, end_date]
+    ).select_related('staff').order_by('-created_at')
     
-    refund_requests = refund_requests.order_by('-request_date')
+    if search_term:
+        sales = sales.filter(
+            Q(invoice_number__icontains=search_term) |
+            Q(customer_name__icontains=search_term) |
+            Q(staff__username__icontains=search_term) |
+            Q(customer_phone__icontains=search_term)
+        )[:50]
     
-    return render(request, 'refund_requests_list.html', {
-        'refund_requests': refund_requests,
-        'search_query': search_query
+    # Serialize results
+    results = []
+    for sale in sales:
+        results.append({
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name or 'Walk-in',
+            'staff_name': sale.staff.username,
+            'total': float(sale.total),
+            'payment_status': sale.payment_status,
+            'created_at': sale.created_at.isoformat(),
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'results': results,
+        'count': len(results),
+        'limited': len(results) == 50
     })
 
 @login_required
-@user_passes_test(is_staff_or_admin)
-def create_refund_request(request):
-    if request.method == 'POST':
-        form = RefundRequestForm(request.POST)
-        if form.is_valid():
-            refund_request = form.save(commit=False)
-            refund_request.created_by = request.user
-            refund_request.save()
-            
-            messages.success(request, 'Refund request submitted successfully!')
-            return redirect('refund_requests_list')
-    else:
-        form = RefundRequestForm()
+def search_stock_api(request):
+    """API endpoint for real-time low stock search"""
+    search_term = request.GET.get('q', '')
     
-    return render(request, 'refund_request_form.html', {'form': form, 'action': 'Create'})
+    products = Product.objects.filter(quantity__lte=F('reorder_level')).select_related('category').order_by('quantity')
+    
+    if search_term:
+        products = products.filter(
+            Q(name__icontains=search_term) |
+            Q(sku__icontains=search_term) |
+            Q(category__name__icontains=search_term)
+        )[:50]
+    
+    # Serialize results
+    results = []
+    for product in products:
+        results.append({
+            'id': product.id,
+            'name': product.name,
+            'sku': product.sku,
+            'quantity': product.quantity,
+            'reorder_level': product.reorder_level,
+            'category': product.category.name if product.category else 'N/A',
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'results': results,
+        'count': len(results),
+        'limited': len(results) == 50
+    })
 
 @login_required
-@user_passes_test(is_staff_or_admin)
-def edit_refund_request(request, pk):
-    refund_request = get_object_or_404(RefundRequest, pk=pk)
+def search_products_api(request):
+    """API endpoint for real-time products search"""
+    search_term = request.GET.get('q', '')
     
-    # Check if user can edit this request
-    if refund_request.created_by != request.user and request.user.role != 'admin':
-        messages.error(request, 'You can only edit your own refund requests.')
-        return redirect('refund_requests_list')
+    products = Product.objects.all().select_related('category', 'supplier').order_by('name')
     
-    if not refund_request.can_edit():
-        messages.error(request, 'Cannot edit refund request that has already been processed.')
-        return redirect('refund_requests_list')
+    if search_term:
+        products = products.filter(
+            Q(name__icontains=search_term) |
+            Q(sku__icontains=search_term) |
+            Q(category__name__icontains=search_term) |
+            Q(supplier__name__icontains=search_term)
+        )[:50]
     
-    if request.method == 'POST':
-        form = RefundRequestForm(request.POST, instance=refund_request)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Refund request updated successfully!')
-            return redirect('refund_requests_list')
-    else:
-        form = RefundRequestForm(instance=refund_request)
+    # Serialize results
+    results = []
+    for product in products:
+        results.append({
+            'id': product.id,
+            'name': product.name,
+            'sku': product.sku,
+            'category': product.category.name if product.category else 'N/A',
+            'price': float(product.price),
+            'quantity': product.quantity,
+            'is_low_stock': product.quantity <= product.reorder_level,
+        })
     
-    return render(request, 'refund_request_form.html', {'form': form, 'action': 'Edit', 'refund_request': refund_request})
+    return JsonResponse({
+        'success': True,
+        'results': results,
+        'count': len(results),
+        'limited': len(results) == 50
+    })
 
 @login_required
-@user_passes_test(is_admin)
-def approve_refund_request(request, pk):
-    refund_request = get_object_or_404(RefundRequest, pk=pk)
+def search_staff_api(request):
+    """API endpoint for real-time staff search"""
+    search_term = request.GET.get('q', '')
     
-    if not refund_request.can_approve_decline(request.user):
-        messages.error(request, 'This refund request cannot be approved.')
-        return redirect('refund_requests_list')
+    staff = User.objects.filter(is_staff=True).order_by('username')
     
-    refund_request.status = 'approved'
-    refund_request.approved_by = request.user
-    refund_request.approved_date = timezone.now()
-    refund_request.save()
+    if search_term:
+        staff = staff.filter(
+            Q(username__icontains=search_term) |
+            Q(first_name__icontains=search_term) |
+            Q(last_name__icontains=search_term) |
+            Q(email__icontains=search_term) |
+            Q(phone__icontains=search_term)
+        )[:50]
     
-    messages.success(request, f'Refund request #{refund_request.id} approved successfully!')
-    return redirect('refund_requests_list')
+    # Serialize results
+    results = []
+    for user in staff:
+        results.append({
+            'id': user.id,
+            'username': user.username,
+            'first_name': user.first_name or '',
+            'last_name': user.last_name or '',
+            'email': user.email,
+            'phone': user.phone or '',
+            'role': user.role,
+            'is_active': user.is_active,
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'results': results,
+        'count': len(results),
+        'limited': len(results) == 50
+    })
 
 @login_required
-@user_passes_test(is_admin)
-def decline_refund_request(request, pk):
-    refund_request = get_object_or_404(RefundRequest, pk=pk)
+def search_debtors_api(request):
+    """API endpoint for real-time debtors search"""
+    search_term = request.GET.get('q', '')
     
-    if not refund_request.can_approve_decline(request.user):
-        messages.error(request, 'This refund request cannot be declined.')
-        return redirect('refund_requests_list')
+    debtors = Sale.objects.filter(balance__gt=0).select_related('staff').order_by('-created_at')
     
-    refund_request.status = 'declined'
-    refund_request.approved_by = request.user
-    refund_request.approved_date = timezone.now()
-    refund_request.save()
+    if search_term:
+        debtors = debtors.filter(
+            Q(invoice_number__icontains=search_term) |
+            Q(customer_name__icontains=search_term) |
+            Q(customer_phone__icontains=search_term) |
+            Q(staff__username__icontains=search_term)
+        )[:50]
     
-    messages.success(request, f'Refund request #{refund_request.id} declined.')
-    return redirect('refund_requests_list')
+    # Serialize results
+    results = []
+    for sale in debtors:
+        results.append({
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name or 'Walk-in',
+            'customer_phone': sale.customer_phone or '',
+            'total': float(sale.total),
+            'amount_paid': float(sale.amount_paid),
+            'balance': float(sale.balance),
+            'created_at': sale.created_at.isoformat(),
+            'staff_name': sale.staff.username,
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'results': results,
+        'count': len(results),
+        'limited': len(results) == 50
+    })
+# =================== SALES HISTORY VIEWS ===================
 
-# ==================== SEARCH SUGGESTIONS API ====================
 
 @login_required
-def search_suggestions(request):
-    """Return search suggestions for auto-complete"""
-    query = request.GET.get('q', '').strip().lower()
-    model_type = request.GET.get('type', '')
+def sale_history(request):
+    """Display all sales with pagination and real-time search"""
+    # Get filter parameters
+    search_query = request.GET.get('search', '')
+    page_number = request.GET.get('page', 1)
     
-    if not query or len(query) < 1:
-        return JsonResponse({'suggestions': []})
+    # Start with base queryset
+    sales = Sale.objects.all().select_related('staff').order_by('-created_at')
     
-    suggestions = []
+    # Apply search filter if provided (for initial page load)
+    if search_query:
+        sales = sales.filter(
+            Q(invoice_number__icontains=search_query) |
+            Q(customer_name__icontains=search_query) |
+            Q(customer_phone__icontains=search_query) |
+            Q(staff__username__icontains=search_query) |
+            Q(staff__first_name__icontains=search_query) |
+            Q(staff__last_name__icontains=search_query)
+        )
     
-    if model_type == 'products':
-        # Product suggestions
-        products = Product.objects.filter(
-            Q(name__istartswith=query) |
-            Q(sku__istartswith=query)
-        )[:10]
-        
-        for p in products:
-            suggestions.append({
-                'text': f"{p.name} ({p.sku}) - ₦{p.price}",
-                'value': p.name,
-                'type': 'product'
-            })
+    # Pagination - 100 per page
+    paginator = Paginator(sales, 100)
+    page_obj = paginator.get_page(page_number)
     
-    elif model_type == 'customers':
-        # Customer suggestions from sales
-        customers = Sale.objects.filter(
-            Q(customer_name__istartswith=query) |
-            Q(customer_name__icontains=query)
-        ).exclude(customer_name='').exclude(customer_name='Walk-in Customer').values_list('customer_name', flat=True).distinct()[:10]
-        
-        for name in customers:
-            if name:
-                suggestions.append({
-                    'text': f"Customer: {name}",
-                    'value': name,
-                    'type': 'customer'
-                })
+    # Calculate totals for the current page
+    page_total = sum(sale.total for sale in page_obj)
     
-    elif model_type == 'invoices':
-        # Invoice suggestions
-        invoices = Sale.objects.filter(
-            Q(invoice_number__istartswith=query) |
-            Q(invoice_number__icontains=query)
-        ).values_list('invoice_number', flat=True).distinct()[:10]
-        
-        for inv in invoices:
-            suggestions.append({
-                'text': f"Invoice: {inv}",
-                'value': inv,
-                'type': 'invoice'
-            })
+    context = {
+        'page_obj': page_obj,
+        'sales': page_obj.object_list,
+        'search_query': search_query,
+        'page_total': page_total,
+        'total_sales_count': sales.count(),
+    }
     
-    elif model_type == 'staff':
-        # Staff suggestions
-        staff_members = User.objects.filter(
-            Q(first_name__istartswith=query) |
-            Q(last_name__istartswith=query) |
-            Q(username__istartswith=query) |
-            Q(email__istartswith=query)
-        )[:10]
-        
-        for s in staff_members:
-            suggestions.append({
-                'text': f"{s.first_name} {s.last_name} ({s.username}) - {s.role}",
-                'value': f"{s.first_name} {s.last_name}",
-                'type': 'staff'
-            })
+    return render(request, 'sale_history.html', context)
+
+@login_required
+def sales_history_api(request):
+    """API endpoint for real-time sales history search"""
+    search_term = request.GET.get('q', '')
     
-    return JsonResponse({'suggestions': suggestions})
+    # Get date range from request (if needed)
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    
+    # Filter sales
+    sales = Sale.objects.all().select_related('staff').order_by('-created_at')
+    
+    # Apply date filter if provided
+    if date_from and date_to:
+        try:
+            start_date = datetime.strptime(date_from, '%Y-%m-%d').date()
+            end_date = datetime.strptime(date_to, '%Y-%m-%d').date()
+            sales = sales.filter(created_at__date__range=[start_date, end_date])
+        except ValueError:
+            pass
+    
+    # Apply search filter
+    if search_term:
+        sales = sales.filter(
+            Q(invoice_number__icontains=search_term) |
+            Q(customer_name__icontains=search_term) |
+            Q(customer_phone__icontains=search_term) |
+            Q(staff__username__icontains=search_term) |
+            Q(staff__first_name__icontains=search_term) |
+            Q(staff__last_name__icontains=search_term)
+        )[:100]  # Limit to 100 for API response
+    
+    # Serialize results
+    results = []
+    for sale in sales:
+        results.append({
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name or 'Walk-in',
+            'customer_phone': sale.customer_phone or '',
+            'staff_name': sale.staff.username,
+            'staff_full_name': f"{sale.staff.first_name or ''} {sale.staff.last_name or ''}".strip(),
+            'subtotal': float(sale.subtotal),
+            'discount': float(sale.discount),
+            'total': float(sale.total),
+            'amount_paid': float(sale.amount_paid),
+            'balance': float(sale.balance),
+            'payment_status': sale.payment_status,
+            'created_at': sale.created_at.isoformat(),
+            'formatted_date': sale.created_at.strftime('%b %d, %Y %I:%M %p'),
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'results': results,
+        'count': len(results),
+    })
+    

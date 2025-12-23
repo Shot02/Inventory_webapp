@@ -16,20 +16,20 @@
         <div>
             <h3>Cart Information</h3>
             <p><strong>Cart Name:</strong> {{ saved_cart.cart_name }}</p>
-            <p><strong>Items Count:</strong> {{ saved_cart.items_count }}</p>
-            <p><strong>Total Amount:</strong> ₦{{ saved_cart.total_amount|floatformat:2 }}</p>
+            <p><strong>Items Count:</strong> {{ items_count }}</p>
+            <p><strong>Total Amount:</strong> ₦{{ total_amount|floatformat:2 }}</p>
             <p><strong>Saved:</strong> {{ saved_cart.created_at|date:"M d, Y H:i" }}</p>
         </div>
         <div>
             <h3>Customer Information</h3>
-            <p><strong>Name:</strong> {{ saved_cart.cart_data.customer_name|default:"Walk-in Customer" }}</p>
-            <p><strong>Phone:</strong> {{ saved_cart.cart_data.customer_phone|default:"Not provided" }}</p>
-            <p><strong>Payment Type:</strong> {{ saved_cart.cart_data.payment_type|title }}</p>
-            <p><strong>Payment Method:</strong> {{ saved_cart.cart_data.payment_method|title }}</p>
+            <p><strong>Name:</strong> {{ cart_data.customer_name|default:"Walk-in Customer" }}</p>
+            <p><strong>Phone:</strong> {{ cart_data.customer_phone|default:"Not provided" }}</p>
+            <p><strong>Payment Type:</strong> {{ cart_data.payment_type|title|default:"Full Payment" }}</p>
+            <p><strong>Payment Method:</strong> {{ cart_data.payment_method|title|default:"Cash" }}</p>
         </div>
     </div>
 
-    <h3>Cart Items ({{ saved_cart.items_count }})</h3>
+    <h3>Cart Items ({{ items_count }})</h3>
     <table>
         <thead>
             <tr>
@@ -41,15 +41,23 @@
             </tr>
         </thead>
         <tbody>
-            {% for item in saved_cart.cart_data.items %}
-            <tr>
-                <td><strong>{{ item.name }}</strong></td>
-                <td>₦{{ item.price|floatformat:2 }}</td>
-                <td>{{ item.quantity }}</td>
-                <td>₦{{ item.discount|floatformat:2 }}</td>
-                <td><strong>₦{{ item.total|floatformat:2 }}</strong></td>
-            </tr>
-            {% endfor %}
+            {% if cart_data.items %}
+                {% for item in cart_data.items %}
+                <tr>
+                    <td><strong>{{ item.name|default:"Unknown Product" }}</strong></td>
+                    <td>₦{{ item.price|floatformat:2 }}</td>
+                    <td>{{ item.quantity|default:1 }}</td>
+                    <td>₦{{ item.discount|default:0|floatformat:2 }}</td>
+                    <td><strong>₦{{ item.total|default:item.price|floatformat:2 }}</strong></td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 2rem; color: #999;">
+                        No items in this cart
+                    </td>
+                </tr>
+            {% endif %}
         </tbody>
     </table>
 </div>
@@ -61,15 +69,33 @@ async function loadCart(cartId) {
         const result = await response.json();
         
         if (result.success) {
+            // Show loading message
+            const loadBtn = document.querySelector('button[onclick^="loadCart"]');
+            const originalText = loadBtn.innerHTML;
+            loadBtn.innerHTML = 'Loading...';
+            loadBtn.disabled = true;
+            
+            // Store cart data in sessionStorage
             sessionStorage.setItem('cartToLoad', JSON.stringify({
                 data: result.cart_data,
                 name: result.cart_name,
                 saved_cart_id: cartId
             }));
-            window.location.href = "{% url 'home' %}";
+            
+            // Redirect to home page
+            setTimeout(() => {
+                window.location.href = "{% url 'home' %}";
+            }, 300);
+            
+        } else {
+            alert('Error loading cart: ' + (result.error || 'Unknown error'));
+            // Reset button
+            loadBtn.innerHTML = originalText;
+            loadBtn.disabled = false;
         }
     } catch (error) {
-        console.log('Error loading cart: ' + error);
+        console.error('Error loading cart:', error);
+        alert('Network error loading cart. Please try again.');
     }
 }
 </script>
