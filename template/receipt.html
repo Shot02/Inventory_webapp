@@ -2,52 +2,204 @@
 
 {% block title %}Receipt - {{ sale.invoice_number }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        .receipt-container, .receipt-container * {
+            visibility: visible;
+        }
+        .receipt-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+        }
+        .no-print {
+            display: none !important;
+        }
+    }
+    
+    .receipt-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .receipt-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #667eea;
+    }
+    
+    .receipt-header h1 {
+        color: #667eea;
+        margin-bottom: 0.5rem;
+        font-size: 2rem;
+    }
+    
+    .receipt-header h2 {
+        color: #666;
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+    }
+    
+    .receipt-info {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .info-section h3 {
+        color: #333;
+        margin-bottom: 0.5rem;
+        font-size: 1.1rem;
+    }
+    
+    .info-section p {
+        margin: 0.3rem 0;
+        color: #555;
+    }
+    
+    .receipt-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 2rem;
+    }
+    
+    .receipt-table th {
+        background: #667eea;
+        color: white;
+        padding: 1rem;
+        text-align: left;
+    }
+    
+    .receipt-table td {
+        padding: 0.8rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .receipt-table tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .receipt-summary {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+    }
+    
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.8rem;
+        font-size: 1.1rem;
+    }
+    
+    .summary-row.total {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #667eea;
+        border-top: 2px solid #ddd;
+        padding-top: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .payment-status {
+        display: inline-block;
+        padding: 0.3rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-paid {
+        background: #d1fae5;
+        color: #065f46;
+    }
+    
+    .status-partial {
+        background: #fef3c7;
+        color: #92400e;
+    }
+    
+    .status-unpaid {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+    
+    .receipt-footer {
+        text-align: center;
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px dashed #ccc;
+        color: #666;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-top: 2rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="card" style="max-width: 800px; margin: 2rem auto;">
-    <div style="text-align: center; margin-bottom: 2rem;">
-        <h1 style="color: #667eea;">A.A ASHIRU ENTERPRIISES SAKI</h1>
-        <h2 style="color: #667eea;">HOME OF QUALITY ENGINEERING KITS</h2>
-        <h2 style="color: #667eea;">SALES RECEIPT</h1>
+<div class="receipt-container">
+    <div class="receipt-header">
+        <h1>A.A ASHIRU ENTERPRIISES SAKI</h1>
+        <h2>HOME OF QUALITY ENGINEERING KITS</h2>
+        <h2>SALES RECEIPT</h2>
         <p style="font-size: 1.2rem;"><strong>Invoice: {{ sale.invoice_number }}</strong></p>
     </div>
     
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
-        <div>
+    <div class="receipt-info">
+        <div class="info-section">
             <h3>Customer Information</h3>
             <p><strong>Name:</strong> {{ sale.customer_name|default:"Walk-in Customer" }}</p>
-            <p><strong>Phone:</strong> {{ sale.customer_phone|default:"-" }}</p>
+            <p><strong>Phone:</strong> {{ sale.customer_phone|default:"Not Provided" }}</p>
+            <p><strong>Payment Status:</strong> 
+                <span class="payment-status status-{{ sale.payment_status }}">
+                    {{ sale.payment_status|title }}
+                </span>
+            </p>
         </div>
-        <div style="text-align: right;">
-            <p><strong>Date:</strong> {{ sale.created_at|date:"M d, Y H:i" }}</p>
-            <p><strong>Served By:</strong> {{ sale.staff.first_name }}</p>
-            <!-- NEW: Payment Method Display -->
+        <div class="info-section" style="text-align: right;">
+            <h3>Transaction Details</h3>
+            <p><strong>Date:</strong> {{ sale.created_at|date:"F d, Y" }}</p>
+            <p><strong>Time:</strong> {{ sale.created_at|date:"h:i A" }}</p>
+            <p><strong>Served By:</strong> {{ sale.staff.get_full_name|default:sale.staff.username }}</p>
             <p><strong>Payment Method:</strong> 
-                {% with latest_payment=sale.payments.first %}
-                    {% if latest_payment %}
-                        {% if latest_payment.payment_method == 'cash' %}
-                            Cash
-                        {% elif latest_payment.payment_method == 'transfer' %}
-                            Transfer
-                        {% elif latest_payment.payment_method == 'card' %}
-                            Card
-                        {% else %}
-                            {{ latest_payment.payment_method|title }}
-                        {% endif %}
-                    {% else %}
-                        Cash
-                    {% endif %}
-                {% endwith %}
+                {% if sale.payments.exists %}
+                    {{ sale.payments.last.payment_method|title }}
+                {% else %}
+                    Cash
+                {% endif %}
             </p>
         </div>
     </div>
     
-    <table style="margin-bottom: 2rem;">
+    <table class="receipt-table">
         <thead>
             <tr>
                 <th>#</th>
                 <th>Product</th>
                 <th>Price</th>
                 <th>Qty</th>
+                <th>Discount</th>
                 <th>Total</th>
             </tr>
         </thead>
@@ -58,50 +210,53 @@
                 <td>{{ item.product_name }}</td>
                 <td>₦{{ item.price|floatformat:2 }}</td>
                 <td>{{ item.quantity }}</td>
+                <td>₦{{ item.discount|floatformat:2 }}</td>
                 <td><strong>₦{{ item.total|floatformat:2 }}</strong></td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     
-    <div style="text-align: right; border-top: 2px solid #333; padding-top: 1rem;">
-        <p style="font-size: 1.1rem;"><strong>Subtotal:</strong> ₦{{ sale.subtotal|floatformat:2 }}</p>
-        <p style="font-size: 1.1rem;"><strong>Total Discount:</strong> ₦{{ sale.discount|floatformat:2 }}</p>
-        <p style="font-size: 1.5rem; color: #667eea;"><strong>GRAND TOTAL:</strong> ₦{{ sale.total|floatformat:2 }}</p>
-        <p style="font-size: 1.1rem;"><strong>Amount Paid:</strong> ₦{{ sale.amount_paid|floatformat:2 }}</p>
-        <!-- NEW: Payment Method in summary -->
-        <p style="font-size: 1.1rem;">
-            <strong>Payment Type:</strong> 
-            {% with latest_payment=sale.payments.first %}
-                {% if latest_payment %}
-                    <span style="text-transform: uppercase; font-weight: bold;">
-                        {% if latest_payment.payment_method == 'cash' %}
-                            CASH
-                        {% elif latest_payment.payment_method == 'transfer' %}
-                            TRANSFER
-                        {% elif latest_payment.payment_method == 'card' %}
-                            CARD
-                        {% else %}
-                            {{ latest_payment.payment_method|upper }}
-                        {% endif %}
-                    </span>
-                {% else %}
-                    <span style="text-transform: uppercase; font-weight: bold;">CASH</span>
-                {% endif %}
-            {% endwith %}
-        </p>
+    <div class="receipt-summary">
+        <div class="summary-row">
+            <span>Subtotal:</span>
+            <span>₦{{ sale.subtotal|floatformat:2 }}</span>
+        </div>
+        <div class="summary-row">
+            <span>Total Discount:</span>
+            <span>₦{{ sale.discount|floatformat:2 }}</span>
+        </div>
+        <div class="summary-row total">
+            <span>GRAND TOTAL:</span>
+            <span>₦{{ sale.total|floatformat:2 }}</span>
+        </div>
+        <div class="summary-row">
+            <span>Amount Paid:</span>
+            <span>₦{{ sale.amount_paid|floatformat:2 }}</span>
+        </div>
         {% if sale.balance > 0 %}
-        <p style="font-size: 1.1rem; color: #dc3545;"><strong>Balance:</strong> ₦{{ sale.balance|floatformat:2 }}</p>
+        <div class="summary-row" style="color: #dc3545;">
+            <span><strong>Balance Due:</strong></span>
+            <span><strong>₦{{ sale.balance|floatformat:2 }}</strong></span>
+        </div>
         {% endif %}
     </div>
     
-    <div style="text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px dashed #ccc;">
-        <p style="font-size: 0.9rem; color: #666;">Thank you for your business!</p>
+    <div class="receipt-footer">
+        <p>Thank you for your business!</p>
+        <p>For inquiries, please contact: +234 XXX XXX XXXX</p>
     </div>
     
-    <div class="no-print" style="text-align: center; margin-top: 2rem;">
-        <button onclick="window.print()" class="btn btn-primary"> Print Receipt</button>
-        <a href="#" onclick="history.back()" class="btn btn-success">Back</a>
+    <div class="action-buttons no-print">
+        <button onclick="window.print()" class="btn btn-primary">
+            Print Receipt
+        </button>
+        <a href="{% url 'home' %}" class="btn btn-success">
+            New Sale
+        </a>
+        <a href="{% url 'sale_history' %}" class="btn btn-info">
+            Sales History
+        </a>
     </div>
 </div>
 {% endblock %}

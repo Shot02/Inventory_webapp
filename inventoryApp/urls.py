@@ -3,7 +3,6 @@ from . import views
 from django.conf import settings
 from django.conf.urls.static import static
 
-
 urlpatterns = [
     # =================== AUTHENTICATION ===================
     path('', views.login_view, name='login'),
@@ -12,7 +11,6 @@ urlpatterns = [
     # =================== HOME / POS ===================
     path('home/', views.home, name='home'),
     path('receipt/<int:sale_id>/', views.view_receipt, name='view_receipt'),
-    path('receipt/<int:sale_id>/edit/', views.edit_receipt, name='edit_receipt'),
     
     # =================== DASHBOARD ===================
     path('admin_dashboard/', views.admin_dashboard, name='admin_dashboard'),
@@ -32,7 +30,6 @@ urlpatterns = [
     # =================== DEBTORS ===================
     path('debtors/', views.debtors_list, name='debtors_list'),
     path('debtors/payment/<int:sale_id>/', views.record_payment, name='record_payment'),
-    path('debtors/history/<int:sale_id>/', views.debtor_payment_history, name='debtor_payment_history'),
     
     # =================== CARTS ===================
     path('saved-carts/', views.saved_carts_list, name='saved_carts_list'),
@@ -66,9 +63,9 @@ urlpatterns = [
     path('api/search/staff/', views.search_staff_api, name='search_staff'),
     path('api/search/debtors/', views.search_debtors_api, name='search_debtors'),
     path('api/sales-history/', views.sales_history_api, name='sales_history_api'),
-    
 ]
 
 # Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

@@ -36,7 +36,7 @@
         border-top: none;
         max-height: 300px;
         overflow-y: auto;
-        z-index: 100;
+        z-index: 1000;
         display: none;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
@@ -65,6 +65,24 @@
         opacity: 0.5;
         cursor: not-allowed;
         background: #ffebee;
+    }
+    
+    .cart-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .cart-table th,
+    .cart-table td {
+        padding: 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .cart-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
     }
     
     .cart-table img {
@@ -111,12 +129,15 @@
         color: white;
         border-radius: 4px;
         cursor: pointer;
+        font-weight: bold;
     }
     
     .quantity-control input {
         width: 60px;
         text-align: center;
         padding: 0.3rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
     }
     
     .stock-badge {
@@ -180,6 +201,7 @@
     
     .payment-type-option input {
         margin: 0;
+        display: none;
     }
     
     .payment-methods {
@@ -192,12 +214,14 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        padding: 0.5rem 1rem;
+        padding: 0.75rem 1rem;
         background: #f8f9fa;
         border: 2px solid #e0e0e0;
         border-radius: 8px;
         cursor: pointer;
         transition: all 0.3s;
+        flex: 1;
+        justify-content: center;
     }
     
     .payment-method-option:hover {
@@ -212,6 +236,7 @@
     
     .payment-method-option input {
         margin: 0;
+        display: none;
     }
     
     .amount-paid-section {
@@ -219,6 +244,13 @@
         grid-template-columns: 1fr 1fr;
         gap: 1rem;
         align-items: end;
+    }
+
+    .btn-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
     }
 
     /* Save Cart Modal Styles */
@@ -230,7 +262,7 @@
         width: 100%;
         height: 100%;
         background: rgba(0,0,0,0.5);
-        z-index: 1000;
+        z-index: 2000;
         justify-content: center;
         align-items: center;
     }
@@ -241,6 +273,13 @@
         border-radius: 12px;
         width: 400px;
         max-width: 90%;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    
+    @media (max-width: 1024px) {
+        .pos-container {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 {% endblock %}
@@ -267,13 +306,13 @@
     <div class="left-panel">
         <div class="card">
             <div class="card-header">
-                <h2> Point of Sale</h2>
+                <h2>Point of Sale</h2>
             </div>
             
             <div class="search-section">
                 <div class="search-box">
                     <input type="text" id="productSearch" class="form-control" 
-                           placeholder=" Search product by name or SKU..." autofocus>
+                           placeholder="Search product by name or SKU..." autofocus>
                     <div id="searchResults" class="search-results"></div>
                 </div>
             </div>
@@ -282,11 +321,9 @@
                 <table class="cart-table">
                     <thead>
                         <tr>
-                            <th>Image</th>
                             <th>Product</th>
                             <th>Price</th>
                             <th>Quantity</th>
-                            <th>Stock Status</th>
                             <th>Discount</th>
                             <th>Total</th>
                             <th>Action</th>
@@ -294,7 +331,7 @@
                     </thead>
                     <tbody id="cartItems">
                         <tr>
-                            <td colspan="8" style="text-align: center; padding: 2rem;">
+                            <td colspan="6" style="text-align: center; padding: 2rem;">
                                 <p style="color: #999;">Cart is empty. Search for products to add.</p>
                             </td>
                         </tr>
@@ -307,19 +344,17 @@
     <div class="right-panel">
         <div class="card">
             <div class="card-header">
-                <h2> Checkout</h2>
+                <h2>Checkout</h2>
             </div>
             
             <!-- Payment Type Selection -->
             <div class="form-group">
                 <label>Payment Type</label>
                 <div class="payment-type-options">
-                    <label class="payment-type-option active" onclick="selectPaymentType('full', event)">
-                        <input type="radio" name="paymentType" value="full" checked> 
+                    <label class="payment-type-option active" onclick="selectPaymentType('full')">
                         Full Payment
                     </label>
-                    <label class="payment-type-option" onclick="selectPaymentType('installment', event)">
-                        <input type="radio" name="paymentType" value="installment">
+                    <label class="payment-type-option" onclick="selectPaymentType('installment')">
                         Installment Payment
                     </label>
                 </div>
@@ -329,12 +364,14 @@
             <div id="customerInfoSection" style="display: none;">
                 <div class="form-group">
                     <label class="required-field">Customer Name *</label>
-                    <input type="text" id="customerName" class="form-control">
+                    <input type="text" id="customerName" class="form-control" 
+                           placeholder="Enter customer name">
                 </div>
                 
                 <div class="form-group">
                     <label class="required-field">Customer Phone *</label>
-                    <input type="tel" id="customerPhone" class="form-control">
+                    <input type="tel" id="customerPhone" class="form-control" 
+                           placeholder="Enter phone number">
                 </div>
             </div>
             
@@ -357,16 +394,13 @@
             <div class="form-group">
                 <label>Payment Method</label>
                 <div class="payment-methods">
-                    <label class="payment-method-option active" onclick="selectPaymentMethod('cash', event)">
-                        <input type="radio" name="paymentMethod" value="cash" checked> 
+                    <label class="payment-method-option active" onclick="selectPaymentMethod('cash')">
                         Cash
                     </label>
-                    <label class="payment-method-option" onclick="selectPaymentMethod('transfer', event)">
-                        <input type="radio" name="paymentMethod" value="transfer">
+                    <label class="payment-method-option" onclick="selectPaymentMethod('transfer')">
                         Transfer
                     </label>
-                    <label class="payment-method-option" onclick="selectPaymentMethod('card', event)">
-                        <input type="radio" name="paymentMethod" value="card">
+                    <label class="payment-method-option" onclick="selectPaymentMethod('card')">
                         Card
                     </label>
                 </div>
@@ -376,24 +410,30 @@
             <div class="amount-paid-section">
                 <div class="form-group">
                     <label>Amount Paid</label>
-                    <input type="number" id="amountPaid" class="form-control" step="0.01" min="0" value="0">
+                    <input type="number" id="amountPaid" class="form-control" 
+                           step="0.01" min="0" value="0" oninput="validateAmount()">
+                </div>
+                <div class="form-group">
+                    <label>Balance</label>
+                    <input type="number" id="balance" class="form-control" 
+                           step="0.01" min="0" value="0" readonly style="background: #f8f9fa;">
                 </div>
             </div>
             
             <!-- Main Action Buttons -->
             <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                 <button onclick="processSale()" class="btn btn-success" style="flex: 1;">
-                     Complete Sale
+                    Complete Sale
                 </button>
                 <button onclick="clearCart()" class="btn btn-danger">
-                     Clear
+                    Clear
                 </button>
             </div>
             
             <!-- Saved Cart Buttons -->
             <div style="display: flex; gap: 1rem; margin-top: 1rem;">
                 <button onclick="openSaveCartModal()" class="btn btn-warning" style="flex: 1;">
-                     Save Cart
+                    Save Cart
                 </button>
                 <a href="{% url 'saved_carts_list' %}" class="btn btn-info" style="flex: 1;">
                     Saved Carts
@@ -409,10 +449,12 @@ let searchTimeout;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Set default amount paid to 0
     document.getElementById('amountPaid').value = '0';
+    document.getElementById('balance').value = '0';
     
-    // Check for cart to load from sessionStorage
+    selectPaymentType('full');
+    selectPaymentMethod('cash');
+    
     const cartToLoad = sessionStorage.getItem('cartToLoad');
     if (cartToLoad && cart.length === 0) {
         const cartData = JSON.parse(cartToLoad);
@@ -480,16 +522,15 @@ async function searchProducts(query) {
 }
 
 function addToCart(product) {
-    // Check if product is out of stock
     if (product.quantity === 0) {
         return;
     }
     
-    const existing = cart.find(item => item.product_id === product.id);
+    const existingIndex = cart.findIndex(item => item.product_id === product.id);
     
-    if (existing) {
-        if (existing.quantity < product.quantity) {
-            existing.quantity++;
+    if (existingIndex > -1) {
+        if (cart[existingIndex].quantity < product.quantity) {
+            cart[existingIndex].quantity += 1;
         } else {
             return;
         }
@@ -510,13 +551,25 @@ function addToCart(product) {
     updateCart();
 }
 
+function calculateSubtotal() {
+    return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+}
+
+function calculateTotalDiscount() {
+    return cart.reduce((sum, item) => sum + (item.discount || 0), 0);
+}
+
+function calculateGrandTotal() {
+    return calculateSubtotal() - calculateTotalDiscount();
+}
+
 function updateCart() {
     const tbody = document.getElementById('cartItems');
     
     if (cart.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" style="text-align: center; padding: 2rem;">
+                <td colspan="6" style="text-align: center; padding: 2rem;">
                     <p style="color: #999;">Cart is empty. Search for products to add.</p>
                 </td>
             </tr>
@@ -526,10 +579,9 @@ function updateCart() {
     }
     
     tbody.innerHTML = cart.map((item, index) => {
-        const total = (item.price * item.quantity) - item.discount;
+        const itemTotal = (item.price * item.quantity) - item.discount;
         return `
             <tr>
-                <td><img src="${item.image || '/static/placeholder.png'}" alt="${item.name}"></td>
                 <td>
                     <strong>${item.name}</strong>
                 </td>
@@ -542,16 +594,15 @@ function updateCart() {
                         <button onclick="updateQuantity(${index}, 1)">+</button>
                     </div>
                 </td>
-                <td>${getStockBadge(item.max_quantity - item.quantity + item.quantity)}</td>
                 <td>
-                    <input type="number" value="${item.discount}" min="0" step="0.01"
+                    <input type="number" value="${item.discount.toFixed(2)}" min="0" step="0.01"
                            onchange="setDiscount(${index}, this.value)"
-                           style="width: 80px; padding: 0.3rem;">
+                           style="width: 80px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
                 </td>
-                <td><strong>₦${total.toFixed(2)}</strong></td>
+                <td><strong>₦${itemTotal.toFixed(2)}</strong></td>
                 <td>
                     <button onclick="removeFromCart(${index})" class="btn btn-danger" style="padding: 0.3rem 0.6rem;">
-                        🗑️
+                        Remove
                     </button>
                 </td>
             </tr>
@@ -559,6 +610,18 @@ function updateCart() {
     }).join('');
     
     updateTotals();
+}
+
+function updateTotals() {
+    const subtotal = calculateSubtotal();
+    const totalDiscount = calculateTotalDiscount();
+    const grandTotal = calculateGrandTotal();
+    
+    document.getElementById('subtotal').textContent = `₦${subtotal.toFixed(2)}`;
+    document.getElementById('totalDiscount').textContent = `₦${totalDiscount.toFixed(2)}`;
+    document.getElementById('grandTotal').textContent = `₦${grandTotal.toFixed(2)}`;
+    
+    validateAmount();
 }
 
 function updateQuantity(index, change) {
@@ -583,11 +646,13 @@ function setQuantity(index, value) {
     const item = cart[index];
     
     if (isNaN(qty) || qty < 1) {
+        item.quantity = 1;
         updateCart();
         return;
     }
     
     if (qty > item.max_quantity) {
+        item.quantity = item.max_quantity;
         updateCart();
         return;
     }
@@ -598,233 +663,118 @@ function setQuantity(index, value) {
 
 function setDiscount(index, value) {
     const discount = parseFloat(value) || 0;
-    if (discount < 0) {
-        updateCart();
-        return;
+    const item = cart[index];
+    
+    const itemTotal = item.price * item.quantity;
+    if (discount > itemTotal) {
+        item.discount = itemTotal;
+    } else if (discount < 0) {
+        item.discount = 0;
+    } else {
+        item.discount = discount;
     }
-    cart[index].discount = discount;
+    
     updateCart();
 }
 
 function removeFromCart(index) {
-    cart.splice(index, 1);
-    updateCart();
-}
-
-function clearCart() {
-    cart = [];
-    updateCart();
-    document.getElementById('customerName').value = '';
-    document.getElementById('customerPhone').value = '';
-    document.getElementById('amountPaid').value = '0';
-    // Reset to full payment
-    selectPaymentType('full');
-}
-
-function updateTotals() {
-    const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const totalDiscount = cart.reduce((sum, item) => sum + item.discount, 0);
-    const grandTotal = subtotal - totalDiscount;
-    
-    document.getElementById('subtotal').textContent = `₦${subtotal.toFixed(2)}`;
-    document.getElementById('totalDiscount').textContent = `₦${totalDiscount.toFixed(2)}`;
-    document.getElementById('grandTotal').textContent = `₦${grandTotal.toFixed(2)}`;
-    
-    // Auto-update amount paid for full payment
-    const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
-    if (paymentType === 'full' && cart.length > 0) {
-        document.getElementById('amountPaid').value = grandTotal.toFixed(2);
-    } else if (paymentType === 'installment') {
-        // For installment, ensure amount paid is not negative
-        const currentAmount = parseFloat(document.getElementById('amountPaid').value) || 0;
-        if (currentAmount < 0) {
-            document.getElementById('amountPaid').value = '0';
-        }
+    if (confirm('Remove this item from cart?')) {
+        cart.splice(index, 1);
+        updateCart();
     }
 }
 
-// Payment Type Selection
-function selectPaymentType(type, event = null) {
-    // Remove active class from all options
+function clearCart() {
+    if (cart.length === 0) return;
+    
+    if (confirm('Clear all items from cart?')) {
+        cart = [];
+        updateCart();
+        
+        document.getElementById('customerName').value = '';
+        document.getElementById('customerPhone').value = '';
+        document.getElementById('amountPaid').value = '0';
+        document.getElementById('balance').value = '0';
+        
+        selectPaymentType('full');
+    }
+}
+
+function selectPaymentType(type) {
     document.querySelectorAll('.payment-type-option').forEach(option => {
         option.classList.remove('active');
     });
     
-    // Add active class to selected option
-    if (event) {
-        event.currentTarget.classList.add('active');
-    } else {
-        
-        const targetOption = document.querySelector(`.payment-type-option input[value="${type}"]`).closest('.payment-type-option');
-        if (targetOption) {
-            targetOption.classList.add('active');
-        }
+    const targetOption = Array.from(document.querySelectorAll('.payment-type-option'))
+        .find(option => option.textContent.trim().toLowerCase().includes(type));
+    
+    if (targetOption) {
+        targetOption.classList.add('active');
     }
     
-    // Update the radio button
-    document.querySelector(`input[name="paymentType"][value="${type}"]`).checked = true;
-    
-    // Show/hide customer info based on payment type
     const customerInfoSection = document.getElementById('customerInfoSection');
-    const amountPaidInput = document.getElementById('amountPaid');
-    const grandTotal = parseFloat(document.getElementById('grandTotal').textContent.replace('₦', '').replace(',', '')) || 0;
     
     if (type === 'installment') {
         customerInfoSection.style.display = 'block';
-        // For installment, ensure amount is not negative
+        const amountPaidInput = document.getElementById('amountPaid');
         const currentAmount = parseFloat(amountPaidInput.value) || 0;
         if (currentAmount < 0) {
             amountPaidInput.value = '0';
         }
+        validateAmount();
     } else {
         customerInfoSection.style.display = 'none';
-        // For full payment, auto-set amount to grand total
         if (cart.length > 0) {
-            amountPaidInput.value = grandTotal.toFixed(2);
+            const grandTotal = calculateGrandTotal();
+            document.getElementById('amountPaid').value = grandTotal.toFixed(2);
+            validateAmount();
         }
     }
 }
 
-// Payment Method Selection
-function selectPaymentMethod(method, event = null) {
-    // Remove active class from all options
+function selectPaymentMethod(method) {
     document.querySelectorAll('.payment-method-option').forEach(option => {
         option.classList.remove('active');
     });
     
-    // Add active class to selected option
-    if (event) {
-        event.currentTarget.classList.add('active');
-    } else {
-        const targetOption = document.querySelector(`.payment-method-option input[value="${method}"]`).closest('.payment-method-option');
-        if (targetOption) {
-            targetOption.classList.add('active');
-        }
-    }
+    const targetOption = Array.from(document.querySelectorAll('.payment-method-option'))
+        .find(option => option.textContent.trim().toLowerCase().includes(method));
     
-    // Update the radio button
-    document.querySelector(`input[value="${method}"]`).checked = true;
+    if (targetOption) {
+        targetOption.classList.add('active');
+    }
 }
 
-// UPDATED: processSale function - Allows installment with 0 amount
-async function processSale() {
-    if (cart.length === 0) {
-        return;
-    }
-    
-    const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
-    const customerName = document.getElementById('customerName').value.trim();
-    const customerPhone = document.getElementById('customerPhone').value.trim();
+function validateAmount() {
     const amountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
-    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
-    const grandTotal = parseFloat(document.getElementById('grandTotal').textContent.replace('₦', '').replace(',', '')) || 0;
+    const grandTotal = calculateGrandTotal();
     
-    // Validate based on payment type
-    if (paymentType === 'installment') {
-        // For installment: Name and phone are REQUIRED
-        if (!customerName) {
-            document.getElementById('customerName').focus();
-            return;
-        }
-        
-        if (!customerPhone) {
-            document.getElementById('customerPhone').focus();
-            return;
-        }
-        
-        // UPDATED: Allow 0 amount for installment (full debt)
-        if (amountPaid < 0) {
-            alert('Amount paid cannot be negative.');
-            document.getElementById('amountPaid').focus();
-            return;
-        }
-        
-        if (amountPaid > grandTotal) {
-            document.getElementById('amountPaid').focus();
-            return;
-        }
-    } else {
-        // For full payment: Name and phone are OPTIONAL
-        // Auto-set amount paid to grand total if it's 0
-        if (amountPaid === 0 && cart.length > 0) {
-            document.getElementById('amountPaid').value = grandTotal.toFixed(2);
-        }
-    }
+    let balance = grandTotal - amountPaid;
+    if (balance < 0) balance = 0;
     
-    // Final amount validation
-    const finalAmountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
+    document.getElementById('balance').value = balance.toFixed(2);
     
-    if (finalAmountPaid < 0) {
-        alert('Amount paid cannot be negative.');
-        return;
-    }
-    
-    if (finalAmountPaid > grandTotal) {
-        return;
-    }
-    
-    // Set final customer information
-    const finalCustomerName = paymentType === 'installment' ? customerName : (customerName || 'Walk-in Customer');
-    const finalCustomerPhone = paymentType === 'installment' ? customerPhone : (customerPhone || '');
-    
-    const items = cart.map(item => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        price: item.price,
-        discount: item.discount,
-        total: (item.price * item.quantity) - item.discount
-    }));
-    
-    try {
-        const response = await fetch('/api/process-sale/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: JSON.stringify({
-                items: items,
-                customer_name: finalCustomerName,
-                customer_phone: finalCustomerPhone,
-                amount_paid: finalAmountPaid,
-                payment_method: paymentMethod,
-                payment_type: paymentType
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Clear the local cart after successful sale
-            cart = [];
-            updateCart();
-            
-            // Clear customer information
-            document.getElementById('customerName').value = '';
-            document.getElementById('customerPhone').value = '';
-            document.getElementById('amountPaid').value = '0';
-            
-            // Reset to full payment
-            selectPaymentType('full');
-            
-            // Redirect to receipt
-            window.location.href = `/receipt/${result.sale_id}/`;
-        } else {
-        }
-    } catch (error) {
-        console.log('Error processing sale: ' + error);
+    if (amountPaid < 0) {
+        document.getElementById('amountPaid').value = '0';
+        validateAmount();
     }
 }
 
-// Save Cart Modal Functions
 function openSaveCartModal() {
     if (cart.length === 0) {
         return;
     }
-    document.getElementById('saveCartModal').style.display = 'flex';
-    // Set default cart name
+    
     const now = new Date();
-    document.getElementById('cartNameInput').value = `Cart from ${now.toLocaleString()}`;
+    const dateStr = now.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    document.getElementById('cartNameInput').value = `Cart ${dateStr}`;
+    
+    document.getElementById('saveCartModal').style.display = 'flex';
 }
 
 function closeSaveCartModal() {
@@ -838,20 +788,25 @@ async function saveCart() {
         return;
     }
     
-    const paymentType = document.querySelector('input[name="paymentType"]:checked').value;
+    const paymentType = document.querySelector('.payment-type-option.active').textContent.trim().toLowerCase().includes('full') ? 'full' : 'installment';
     const customerName = document.getElementById('customerName').value.trim();
     const customerPhone = document.getElementById('customerPhone').value.trim();
     const amountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
-    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+    const paymentMethod = document.querySelector('.payment-method-option.active').textContent.trim().toLowerCase();
     
     const cartData = {
         cart_name: cartName,
-        items: cart,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        payment_type: paymentType,
-        payment_method: paymentMethod,
-        amount_paid: amountPaid
+        cart_data: {
+            items: cart,
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            payment_type: paymentType,
+            payment_method: paymentMethod,
+            amount_paid: amountPaid,
+            subtotal: calculateSubtotal(),
+            total: calculateGrandTotal(),
+            timestamp: new Date().toISOString()
+        }
     };
     
     try {
@@ -868,24 +823,124 @@ async function saveCart() {
         
         if (result.success) {
             closeSaveCartModal();
-        } else {
         }
     } catch (error) {
-        console.log('Error saving cart: ' + error);
+        console.error('Save cart error:', error);
+    }
+}
+
+async function processSale() {
+    if (cart.length === 0) {
+        return;
+    }
+    
+    const paymentType = document.querySelector('.payment-type-option.active').textContent.trim().toLowerCase().includes('full') ? 'full' : 'installment';
+    const customerName = document.getElementById('customerName').value.trim();
+    const customerPhone = document.getElementById('customerPhone').value.trim();
+    const amountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
+    const paymentMethod = document.querySelector('.payment-method-option.active').textContent.trim().toLowerCase();
+    const grandTotal = calculateGrandTotal();
+    
+    if (paymentType === 'installment') {
+        if (!customerName) {
+            document.getElementById('customerName').focus();
+            return;
+        }
+        
+        if (!customerPhone) {
+            document.getElementById('customerPhone').focus();
+            return;
+        }
+        
+        if (amountPaid < 0) {
+            document.getElementById('amountPaid').focus();
+            return;
+        }
+        
+        if (amountPaid > grandTotal) {
+            document.getElementById('amountPaid').focus();
+            return;
+        }
+    } else {
+        if (amountPaid === 0 && cart.length > 0) {
+            document.getElementById('amountPaid').value = grandTotal.toFixed(2);
+        }
+    }
+    
+    const finalAmountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
+    
+    if (finalAmountPaid < 0) {
+        return;
+    }
+    
+    if (finalAmountPaid > grandTotal) {
+        return;
+    }
+    
+    const finalCustomerName = paymentType === 'installment' ? customerName : (customerName || 'Walk-in Customer');
+    const finalCustomerPhone = paymentType === 'installment' ? customerPhone : (customerPhone || '');
+    
+    const items = cart.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        price: item.price,
+        discount: item.discount || 0,
+        total: (item.price * item.quantity) - (item.discount || 0)
+    }));
+    
+    try {
+        const response = await fetch('/api/process-sale/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                items: items,
+                customer_name: finalCustomerName,
+                customer_phone: finalCustomerPhone,
+                amount_paid: finalAmountPaid,
+                payment_method: paymentMethod,
+                payment_type: paymentType,
+                discount: calculateTotalDiscount()
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            cart = [];
+            updateCart();
+            
+            document.getElementById('customerName').value = '';
+            document.getElementById('customerPhone').value = '';
+            document.getElementById('amountPaid').value = '0';
+            document.getElementById('balance').value = '0';
+            
+            selectPaymentType('full');
+            
+            window.location.href = `/receipt/${result.sale_id}/`;
+        }
+    } catch (error) {
+        console.error('Process sale error:', error);
     }
 }
 
 function loadCartData(cartData) {
-    // Clear current cart
-    cart = [];
-    
-    // Load saved items
     if (cartData.items && cartData.items.length > 0) {
-        cart = cartData.items;
+        cart = cartData.items.map(item => ({
+            product_id: item.product_id || item.id,
+            name: item.name,
+            price: parseFloat(item.price),
+            quantity: parseInt(item.quantity),
+            discount: parseFloat(item.discount || 0),
+            image: item.image,
+            max_quantity: item.max_quantity || 999
+        }));
+        
         updateCart();
     }
     
-    // Load customer information
     if (cartData.customer_name) {
         document.getElementById('customerName').value = cartData.customer_name;
     }
@@ -893,33 +948,15 @@ function loadCartData(cartData) {
         document.getElementById('customerPhone').value = cartData.customer_phone;
     }
     
-    // Load payment type
     if (cartData.payment_type) {
         selectPaymentType(cartData.payment_type);
     }
-    
-    // Load payment method
     if (cartData.payment_method) {
-        document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
-            radio.checked = false;
-        });
-        
-        const targetRadio = document.querySelector(`input[value="${cartData.payment_method}"]`);
-        if (targetRadio) {
-            targetRadio.checked = true;
-        }
-        
-        document.querySelectorAll('.payment-method-option').forEach(option => {
-            option.classList.remove('active');
-            if (option.querySelector('input').value === cartData.payment_method) {
-                option.classList.add('active');
-            }
-        });
+        selectPaymentMethod(cartData.payment_method);
     }
-    
-    // Load amount paid
     if (cartData.amount_paid) {
-        document.getElementById('amountPaid').value = cartData.amount_paid;
+        document.getElementById('amountPaid').value = parseFloat(cartData.amount_paid).toFixed(2);
+        validateAmount();
     }
 }
 
@@ -938,25 +975,28 @@ function getCookie(name) {
     return cookieValue;
 }
 
-// Close modal when clicking outside
+document.addEventListener('click', function(e) {
+    const searchBox = document.querySelector('.search-box');
+    const searchResults = document.getElementById('searchResults');
+    
+    if (!searchBox.contains(e.target)) {
+        searchResults.style.display = 'none';
+    }
+});
+
 document.getElementById('saveCartModal').addEventListener('click', function(e) {
     if (e.target === this) {
         closeSaveCartModal();
     }
 });
 
-// Close search results when clicking outside
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('.search-box')) {
-        document.getElementById('searchResults').style.display = 'none';
-    }
-});
-
-// Escape key to close search results
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         document.getElementById('searchResults').style.display = 'none';
-        document.getElementById('productSearch').value = '';
+        
+        if (document.getElementById('saveCartModal').style.display === 'flex') {
+            closeSaveCartModal();
+        }
     }
 });
 </script>

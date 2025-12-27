@@ -27,7 +27,7 @@
     
     .cart-header {
         display: flex;
-        justify-content: between;
+        justify-content: space-between;
         align-items: flex-start;
         margin-bottom: 1rem;
     }
@@ -79,11 +79,6 @@
         color: #666;
     }
     
-    .empty-state-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-    }
-    
     .badge {
         padding: 0.3rem 0.6rem;
         border-radius: 12px;
@@ -100,12 +95,20 @@
         background: #e8f5e8;
         color: #2e7d32;
     }
+    
+    .cart-details {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #eee;
+        font-size: 0.9rem;
+        color: #666;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-    <h1>🛒 My Saved Carts</h1>
+    <h1>My Saved Carts</h1>
     <a href="{% url 'home' %}" class="btn btn-primary">Back to POS</a>
 </div>
 
@@ -122,19 +125,44 @@
         </div>
         
         <div class="cart-meta">
-            <span>{{ cart.created_at|timesince }} ago</span>
+            <span title="{{ cart.created_at|date:'Y-m-d H:i:s' }}">
+                {{ cart.created_at|timesince }} ago
+            </span>
             {% if cart.cart_data.customer_name and cart.cart_data.customer_name != 'Walk-in Customer' %}
             <span>{{ cart.cart_data.customer_name }}</span>
             {% endif %}
         </div>
         
         <div class="cart-items">
-            {% for item in cart.cart_data.items %}
-            <div class="cart-item">
-                <span>{{ item.name }}</span>
-                <span><strong>₦{{ item.total|floatformat:2 }}</strong></span>
+            {% if cart.cart_data.items %}
+                {% for item in cart.cart_data.items|slice:":5" %}
+                <div class="cart-item">
+                    <span>{{ item.name|truncatechars:25 }}</span>
+                    <span><strong>₦{{ item.total|default:item.price|floatformat:2 }}</strong></span>
+                </div>
+                {% endfor %}
+                {% if cart.cart_data.items|length > 5 %}
+                <div class="cart-item" style="color: #666; font-style: italic;">
+                    <span>+ {{ cart.cart_data.items|length|add:"-5" }} more items</span>
+                    <span></span>
+                </div>
+                {% endif %}
+            {% else %}
+                <div style="text-align: center; color: #999; padding: 1rem;">
+                    No items in cart
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="cart-details">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span>Payment Type:</span>
+                <span><strong>{{ cart.cart_data.payment_type|default:"full"|title }}</strong></span>
             </div>
-            {% endfor %}
+            <div style="display: flex; justify-content: space-between;">
+                <span>Payment Method:</span>
+                <span><strong>{{ cart.cart_data.payment_method|default:"cash"|title }}</strong></span>
+            </div>
         </div>
         
         <div class="cart-actions">
@@ -144,8 +172,8 @@
             <a href="{% url 'view_saved_cart' cart.id %}" class="btn btn-primary">
                 View
             </a>
-            <button onclick="deleteCart({{ cart.id }}, '{{ cart.cart_name }}')" class="btn btn-danger">
-                🗑️
+            <button onclick="deleteCart({{ cart.id }}, '{{ cart.cart_name|escapejs }}')" class="btn btn-danger">
+                Delete
             </button>
         </div>
     </div>
@@ -153,9 +181,11 @@
 </div>
 {% else %}
 <div class="empty-state">
-    <div class="empty-state-icon">🛒</div>
     <h3>No Saved Carts Yet</h3>
     <p>Save your carts from the POS page to see them here.</p>
+    <a href="{% url 'home' %}" class="btn btn-primary" style="margin-top: 1rem;">
+        Go to POS
+    </a>
 </div>
 {% endif %}
 
@@ -166,20 +196,30 @@ async function loadCart(cartId) {
         const result = await response.json();
         
         if (result.success) {
-            // Store cart data in sessionStorage and redirect to POS
+            const loadBtn = event.target;
+            loadBtn.innerHTML = 'Loading...';
+            loadBtn.disabled = true;
+            
             sessionStorage.setItem('cartToLoad', JSON.stringify({
                 data: result.cart_data,
                 name: result.cart_name,
                 saved_cart_id: cartId
             }));
-            window.location.href = "{% url 'home' %}";
+            
+            setTimeout(() => {
+                window.location.href = "{% url 'home' %}";
+            }, 500);
         }
     } catch (error) {
-        console.log('Error loading cart: ' + error);
+        console.error('Error loading cart:', error);
     }
 }
 
 async function deleteCart(cartId, cartName) {
+    if (!confirm(`Are you sure you want to delete "${cartName}"?`)) {
+        return;
+    }
+    
     try {
         const response = await fetch(`/api/delete-saved-cart/${cartId}/`, {
             method: 'POST',
@@ -194,7 +234,7 @@ async function deleteCart(cartId, cartName) {
             location.reload();
         }
     } catch (error) {
-        console.log('Error deleting cart: ' + error);
+        console.error('Error deleting cart:', error);
     }
 }
 
