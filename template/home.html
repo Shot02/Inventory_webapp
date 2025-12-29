@@ -254,7 +254,7 @@
     }
 
     /* Save Cart Modal Styles */
-    .modal-overlay {
+    .save-cart-modal {
         display: none;
         position: fixed;
         top: 0;
@@ -267,7 +267,7 @@
         align-items: center;
     }
     
-    .modal-content {
+    .save-cart-modal .modal-content {
         background: white;
         padding: 2rem;
         border-radius: 12px;
@@ -287,15 +287,18 @@
 {% block content %}
 
 <!-- Save Cart Modal -->
-<div id="saveCartModal" class="modal-overlay">
+<div id="saveCartModal" class="save-cart-modal">
     <div class="modal-content">
-        <h3 style="margin-bottom: 1rem;">Save Cart</h3>
+        <div class="global-modal-title">
+            <h3 style="margin: 0;">Save Cart</h3>
+            <button onclick="closeSaveCartModal()" class="global-modal-close">&times;</button>
+        </div>
         <div class="form-group">
             <label>Cart Name</label>
             <input type="text" id="cartNameInput" class="form-control" 
                    placeholder="Enter cart name" value="Cart from {{ now|date:'M d, Y H:i' }}">
         </div>
-        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <div class="global-modal-buttons">
             <button onclick="saveCart()" class="btn btn-success" style="flex: 1;">Save</button>
             <button onclick="closeSaveCartModal()" class="btn btn-danger">Cancel</button>
         </div>
@@ -444,10 +447,11 @@
 </div>
 
 <script>
+// ========== GLOBAL CART VARIABLES ==========
 let cart = [];
 let searchTimeout;
 
-// Initialize on page load
+// ========== INITIALIZATION ==========
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('amountPaid').value = '0';
     document.getElementById('balance').value = '0';
@@ -455,15 +459,24 @@ document.addEventListener('DOMContentLoaded', function() {
     selectPaymentType('full');
     selectPaymentMethod('cash');
     
+    // Check for saved cart to load
     const cartToLoad = sessionStorage.getItem('cartToLoad');
     if (cartToLoad && cart.length === 0) {
-        const cartData = JSON.parse(cartToLoad);
-        loadCartData(cartData.data);
-        sessionStorage.removeItem('cartToLoad');
+        try {
+            const cartData = JSON.parse(cartToLoad);
+            loadCartData(cartData.data);
+            
+            // Show message that saved cart was loaded
+            showModal('Saved Cart Loaded', `Cart "${cartData.name}" has been loaded. Complete the sale to remove it from saved carts.`, 'info');
+            
+        } catch (error) {
+            console.error('Error loading cart from storage:', error);
+            sessionStorage.removeItem('cartToLoad');
+        }
     }
 });
 
-// REAL-TIME PRODUCT SEARCH
+// ========== PRODUCT SEARCH ==========
 document.getElementById('productSearch').addEventListener('input', function(e) {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
@@ -518,11 +531,14 @@ async function searchProducts(query) {
         resultsDiv.style.display = 'block';
     } catch (error) {
         console.error('Search error:', error);
+        showModal('Search Error', 'An error occurred while searching for products.', 'error');
     }
 }
 
+// ========== CART FUNCTIONS ==========
 function addToCart(product) {
     if (product.quantity === 0) {
+        showModal('Out of Stock', `${product.name} is out of stock.`, 'warning');
         return;
     }
     
@@ -532,6 +548,7 @@ function addToCart(product) {
         if (cart[existingIndex].quantity < product.quantity) {
             cart[existingIndex].quantity += 1;
         } else {
+            showModal('Stock Limit', `Only ${product.quantity} items of ${product.name} available in stock.`, 'warning');
             return;
         }
     } else {
@@ -634,6 +651,7 @@ function updateQuantity(index, change) {
     }
     
     if (newQty > item.max_quantity) {
+        showModal('Stock Limit', `Only ${item.max_quantity} items of ${item.name} available in stock.`, 'warning');
         return;
     }
     
@@ -678,28 +696,37 @@ function setDiscount(index, value) {
 }
 
 function removeFromCart(index) {
-    if (confirm('Remove this item from cart?')) {
-        cart.splice(index, 1);
-        updateCart();
-    }
+    showConfirmModal(
+        'Remove Item',
+        'Remove this item from cart?',
+        function() {
+            cart.splice(index, 1);
+            updateCart();
+        }
+    );
 }
 
 function clearCart() {
     if (cart.length === 0) return;
     
-    if (confirm('Clear all items from cart?')) {
-        cart = [];
-        updateCart();
-        
-        document.getElementById('customerName').value = '';
-        document.getElementById('customerPhone').value = '';
-        document.getElementById('amountPaid').value = '0';
-        document.getElementById('balance').value = '0';
-        
-        selectPaymentType('full');
-    }
+    showConfirmModal(
+        'Clear Cart',
+        'Clear all items from cart?',
+        function() {
+            cart = [];
+            updateCart();
+            
+            document.getElementById('customerName').value = '';
+            document.getElementById('customerPhone').value = '';
+            document.getElementById('amountPaid').value = '0';
+            document.getElementById('balance').value = '0';
+            
+            selectPaymentType('full');
+        }
+    );
 }
 
+// ========== PAYMENT FUNCTIONS ==========
 function selectPaymentType(type) {
     document.querySelectorAll('.payment-type-option').forEach(option => {
         option.classList.remove('active');
@@ -760,8 +787,10 @@ function validateAmount() {
     }
 }
 
+// ========== SAVE CART FUNCTIONS ==========
 function openSaveCartModal() {
     if (cart.length === 0) {
+        showModal('Empty Cart', 'Please add items to cart before saving.', 'warning');
         return;
     }
     
@@ -785,6 +814,7 @@ async function saveCart() {
     const cartName = document.getElementById('cartNameInput').value.trim();
     
     if (!cartName) {
+        showModal('Cart Name Required', 'Please enter a name for your cart.', 'warning');
         return;
     }
     
@@ -823,14 +853,20 @@ async function saveCart() {
         
         if (result.success) {
             closeSaveCartModal();
+            showModal('Success', 'Cart saved successfully!', 'success');
+        } else {
+            showModal('Error', 'Failed to save cart: ' + (result.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         console.error('Save cart error:', error);
+        showModal('Network Error', 'Failed to save cart. Please check your connection.', 'error');
     }
 }
 
+// ========== PROCESS SALE FUNCTION (WITH SAVED CART DELETION) ==========
 async function processSale() {
     if (cart.length === 0) {
+        showModal('Empty Cart', 'Please add items to cart before processing sale.', 'warning');
         return;
     }
     
@@ -841,23 +877,43 @@ async function processSale() {
     const paymentMethod = document.querySelector('.payment-method-option.active').textContent.trim().toLowerCase();
     const grandTotal = calculateGrandTotal();
     
+    // Check if this is from a saved cart
+    let savedCartId = null;
+    let savedCartName = null;
+    
+    try {
+        const cartToLoad = sessionStorage.getItem('cartToLoad');
+        if (cartToLoad) {
+            const savedCartData = JSON.parse(cartToLoad);
+            savedCartId = savedCartData.saved_cart_id;
+            savedCartName = savedCartData.name;
+        }
+    } catch (e) {
+        console.error('Error parsing saved cart data:', e);
+    }
+    
+    // Validation
     if (paymentType === 'installment') {
         if (!customerName) {
+            showModal('Customer Name Required', 'Please enter customer name for installment payment.', 'warning');
             document.getElementById('customerName').focus();
             return;
         }
         
         if (!customerPhone) {
+            showModal('Customer Phone Required', 'Please enter customer phone for installment payment.', 'warning');
             document.getElementById('customerPhone').focus();
             return;
         }
         
         if (amountPaid < 0) {
+            showModal('Invalid Amount', 'Amount paid cannot be negative.', 'error');
             document.getElementById('amountPaid').focus();
             return;
         }
         
         if (amountPaid > grandTotal) {
+            showModal('Invalid Amount', 'Amount paid cannot exceed grand total.', 'error');
             document.getElementById('amountPaid').focus();
             return;
         }
@@ -870,10 +926,12 @@ async function processSale() {
     const finalAmountPaid = parseFloat(document.getElementById('amountPaid').value) || 0;
     
     if (finalAmountPaid < 0) {
+        showModal('Invalid Amount', 'Amount paid cannot be negative.', 'error');
         return;
     }
     
     if (finalAmountPaid > grandTotal) {
+        showModal('Invalid Amount', 'Amount paid cannot exceed grand total.', 'error');
         return;
     }
     
@@ -902,16 +960,22 @@ async function processSale() {
                 amount_paid: finalAmountPaid,
                 payment_method: paymentMethod,
                 payment_type: paymentType,
-                discount: calculateTotalDiscount()
+                discount: calculateTotalDiscount(),
+                saved_cart_id: savedCartId  // Send saved cart ID for deletion
             })
         });
         
         const result = await response.json();
         
         if (result.success) {
+            // Clear cart and reset form
             cart = [];
             updateCart();
             
+            // Clear saved cart data from sessionStorage
+            sessionStorage.removeItem('cartToLoad');
+            
+            // Reset form fields
             document.getElementById('customerName').value = '';
             document.getElementById('customerPhone').value = '';
             document.getElementById('amountPaid').value = '0';
@@ -919,13 +983,27 @@ async function processSale() {
             
             selectPaymentType('full');
             
-            window.location.href = `/receipt/${result.sale_id}/`;
+            // Show appropriate message
+            if (result.cart_deleted && savedCartName) {
+                showModal('Success', `Sale processed successfully!<br><br>Saved cart "${savedCartName}" has been automatically removed.`, 'success', function() {
+                    window.location.href = `/receipt/${result.sale_id}/`;
+                });
+            } else {
+                showModal('Success', 'Sale processed successfully! Redirecting to receipt...', 'success', function() {
+                    window.location.href = `/receipt/${result.sale_id}/`;
+                });
+            }
+            
+        } else {
+            showModal('Error', 'Error processing sale: ' + (result.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         console.error('Process sale error:', error);
+        showModal('Network Error', 'Error processing sale. Please check your connection and try again.', 'error');
     }
 }
 
+// ========== LOAD CART DATA FUNCTION ==========
 function loadCartData(cartData) {
     if (cartData.items && cartData.items.length > 0) {
         cart = cartData.items.map(item => ({
@@ -960,21 +1038,7 @@ function loadCartData(cartData) {
     }
 }
 
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
+// ========== EVENT LISTENERS ==========
 document.addEventListener('click', function(e) {
     const searchBox = document.querySelector('.search-box');
     const searchResults = document.getElementById('searchResults');

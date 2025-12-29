@@ -373,7 +373,7 @@ function openEditRefundModal(refundId) {
         // Find the table row with the refund data
         const row = document.querySelector(`tr[data-refund-id="${refundId}"]`);
         if (!row) {
-            alert('Refund request not found');
+            showModal('Refund request not found');
             return;
         }
         
@@ -449,7 +449,7 @@ function openEditRefundModal(refundId) {
         
     } catch (error) {
         console.error('Error opening edit modal:', error);
-        alert('Error loading refund data. Please try again.');
+        showModal('Error loading refund data. Please try again.');
     }
 }
 
@@ -476,7 +476,8 @@ document.getElementById('editRefundForm').addEventListener('submit', async funct
     
     // Check if request is still pending
     if (status !== 'pending') {
-        alert('This refund request has already been processed and cannot be edited.');
+        showModal('This refund request has already been processed and cannot be edited');
+        
         closeEditRefundModal();
         return;
     }
@@ -488,25 +489,25 @@ document.getElementById('editRefundForm').addEventListener('submit', async funct
     const amount = parseFloat(document.getElementById('editRefundAmount').value) || 0;
     
     if (!customerName) {
-        alert('Customer name is required');
+        showModal('Customer name is required');
         document.getElementById('editRefundCustomerName').focus();
         return;
     }
     
     if (!customerPhone) {
-        alert('Customer phone is required');
+        showModal('Customer phone is required');
         document.getElementById('editRefundCustomerPhone').focus();
         return;
     }
     
     if (!reason) {
-        alert('Refund reason is required');
+        showModal('Refund reason is required');
         document.getElementById('editRefundReason').focus();
         return;
     }
     
     if (amount <= 0) {
-        alert('Please enter a valid refund amount (greater than 0)');
+        showModal('Please enter a valid refund amount (greater than 0)');
         document.getElementById('editRefundAmount').focus();
         return;
     }
@@ -545,14 +546,14 @@ document.getElementById('editRefundForm').addEventListener('submit', async funct
             }, 1000);
             
         } else {
-            alert(result.error || 'Error updating refund request');
+            showModal(result.error || 'Error updating refund reguests');
             submitBtn.disabled = false;
             submitBtn.innerHTML = 'Save Changes';
         }
         
     } catch (error) {
         console.error('Network error:', error);
-        alert('Network error. Please check your connection and try again.');
+        showModal('Network error. Please check your connection and try again');
         submitBtn.disabled = false;
         submitBtn.innerHTML = 'Save Changes';
     }

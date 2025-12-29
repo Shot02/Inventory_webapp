@@ -272,10 +272,105 @@
         .badge-warning { background: #fef3c7; color: #92400e; }
         .badge-danger  { background: #fee2e2; color: #b91c1c; }
         
+        /* Global Modal Styles */
+        .global-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(3px);
+        }
+
+        .global-modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 500px;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            animation: modalFadeIn 0.3s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .global-modal-success .global-modal-content {
+            border-top: 4px solid #48bb78;
+        }
+        
+        .global-modal-error .global-modal-content {
+            border-top: 4px solid #f56565;
+        }
+        
+        .global-modal-warning .global-modal-content {
+            border-top: 4px solid #ed8936;
+        }
+        
+        .global-modal-info .global-modal-content {
+            border-top: 4px solid #667eea;
+        }
+        
+        .global-modal-confirm .global-modal-content {
+            border-top: 4px solid #667eea;
+        }
+        
+        .global-modal-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .global-modal-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .global-modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+        
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <!-- Global Modal -->
+    <div id="globalModal" class="global-modal-overlay">
+        <div class="global-modal-content">
+            <div class="global-modal-title">
+                <h3 id="modalTitle" style="margin: 0;">Alert</h3>
+                <button id="modalCloseBtn" class="global-modal-close">&times;</button>
+            </div>
+            <div id="modalContent" style="margin-bottom: 1rem;">
+                <!-- Modal content will be inserted here -->
+            </div>
+            <div id="modalButtons" class="global-modal-buttons">
+                <!-- Buttons will be inserted here -->
+            </div>
+        </div>
+    </div>
+    
     <div class="container">
         <!-- Navigation Bar -->
         {% if user.is_authenticated %}
@@ -329,6 +424,269 @@
     </div>
     
     <script>
+        // GLOBAL MODAL SYSTEM - REPLACES ALL ALERTS
+        let modalResolveCallback = null;
+        let modalPromise = null;
+        
+        // Show basic modal (replaces alert())
+        window.showModal = function(title, message, type = 'info', onClose = null) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('globalModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const modalContent = document.getElementById('modalContent');
+                const modalButtons = document.getElementById('modalButtons');
+                const modalCloseBtn = document.getElementById('modalCloseBtn');
+                
+                // Remove existing classes
+                modal.className = 'global-modal-overlay';
+                
+                // Add type class
+                modal.classList.add(`global-modal-${type}`);
+                
+                // Set content
+                modalTitle.textContent = title;
+                modalContent.innerHTML = `<p style="font-size: 1.1rem; line-height: 1.5;">${message}</p>`;
+                
+                // Create single OK button
+                modalButtons.innerHTML = `
+                    <button id="modalOkBtn" class="btn btn-primary" style="flex: 1;">
+                        OK
+                    </button>
+                `;
+                
+                // Show modal
+                modal.style.display = 'flex';
+                
+                // Set up event handlers
+                const okBtn = document.getElementById('modalOkBtn');
+                const closeHandler = function() {
+                    if (onClose && typeof onClose === 'function') {
+                        onClose();
+                    }
+                    resolve(true);
+                    closeGlobalModal();
+                };
+                
+                okBtn.onclick = closeHandler;
+                modalCloseBtn.onclick = closeHandler;
+                
+                // Close on overlay click
+                modal.onclick = function(e) {
+                    if (e.target === modal) {
+                        closeHandler();
+                    }
+                };
+                
+                // Prevent event bubbling
+                modalContent.onclick = function(e) {
+                    e.stopPropagation();
+                };
+                modalButtons.onclick = function(e) {
+                    e.stopPropagation();
+                };
+            });
+        };
+        
+        // Show confirm modal (replaces confirm())
+        window.showConfirmModal = function(title, message, confirmCallback, cancelCallback = null) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('globalModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const modalContent = document.getElementById('modalContent');
+                const modalButtons = document.getElementById('modalButtons');
+                const modalCloseBtn = document.getElementById('modalCloseBtn');
+                
+                // Remove existing classes
+                modal.className = 'global-modal-overlay';
+                modal.classList.add('global-modal-confirm');
+                
+                // Set content
+                modalTitle.textContent = title;
+                modalContent.innerHTML = `<p style="font-size: 1.1rem; line-height: 1.5;">${message}</p>`;
+                
+                // Create confirm buttons
+                modalButtons.innerHTML = `
+                    <button id="modalConfirmBtn" class="btn btn-success" style="flex: 1;">
+                        Yes, Confirm
+                    </button>
+                    <button id="modalCancelBtn" class="btn btn-danger" style="flex: 1;">
+                        Cancel
+                    </button>
+                `;
+                
+                // Show modal
+                modal.style.display = 'flex';
+                
+                // Set up event handlers
+                const confirmBtn = document.getElementById('modalConfirmBtn');
+                const cancelBtn = document.getElementById('modalCancelBtn');
+                
+                const confirmHandler = function() {
+                    if (confirmCallback && typeof confirmCallback === 'function') {
+                        confirmCallback();
+                    }
+                    resolve(true);
+                    closeGlobalModal();
+                };
+                
+                const cancelHandler = function() {
+                    if (cancelCallback && typeof cancelCallback === 'function') {
+                        cancelCallback();
+                    }
+                    resolve(false);
+                    closeGlobalModal();
+                };
+                
+                confirmBtn.onclick = confirmHandler;
+                cancelBtn.onclick = cancelHandler;
+                modalCloseBtn.onclick = cancelHandler;
+                
+                // Close on overlay click
+                modal.onclick = function(e) {
+                    if (e.target === modal) {
+                        cancelHandler();
+                    }
+                };
+                
+                // Prevent event bubbling
+                modalContent.onclick = function(e) {
+                    e.stopPropagation();
+                };
+                modalButtons.onclick = function(e) {
+                    e.stopPropagation();
+                };
+            });
+        };
+        
+        // Show prompt modal (replaces prompt())
+        window.showPromptModal = function(title, message, defaultValue = '') {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('globalModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const modalContent = document.getElementById('modalContent');
+                const modalButtons = document.getElementById('modalButtons');
+                const modalCloseBtn = document.getElementById('modalCloseBtn');
+                
+                // Remove existing classes
+                modal.className = 'global-modal-overlay';
+                modal.classList.add('global-modal-info');
+                
+                // Set content
+                modalTitle.textContent = title;
+                modalContent.innerHTML = `
+                    <p style="font-size: 1.1rem; line-height: 1.5; margin-bottom: 1rem;">${message}</p>
+                    <input type="text" id="promptInput" class="form-control" value="${defaultValue}" placeholder="Enter value">
+                `;
+                
+                // Create confirm buttons
+                modalButtons.innerHTML = `
+                    <button id="modalOkBtn" class="btn btn-success" style="flex: 1;">
+                        OK
+                    </button>
+                    <button id="modalCancelBtn" class="btn btn-danger" style="flex: 1;">
+                        Cancel
+                    </button>
+                `;
+                
+                // Show modal
+                modal.style.display = 'flex';
+                
+                // Focus on input
+                setTimeout(() => {
+                    const input = document.getElementById('promptInput');
+                    input.focus();
+                    input.select();
+                }, 100);
+                
+                // Set up event handlers
+                const okBtn = document.getElementById('modalOkBtn');
+                const cancelBtn = document.getElementById('modalCancelBtn');
+                
+                const okHandler = function() {
+                    const input = document.getElementById('promptInput');
+                    resolve(input.value);
+                    closeGlobalModal();
+                };
+                
+                const cancelHandler = function() {
+                    resolve(null);
+                    closeGlobalModal();
+                };
+                
+                okBtn.onclick = okHandler;
+                cancelBtn.onclick = cancelHandler;
+                modalCloseBtn.onclick = cancelHandler;
+                
+                // Enter key to submit
+                const input = document.getElementById('promptInput');
+                input.onkeypress = function(e) {
+                    if (e.key === 'Enter') {
+                        okHandler();
+                    }
+                };
+                
+                // Close on overlay click
+                modal.onclick = function(e) {
+                    if (e.target === modal) {
+                        cancelHandler();
+                    }
+                };
+                
+                // Prevent event bubbling
+                modalContent.onclick = function(e) {
+                    e.stopPropagation();
+                };
+                modalButtons.onclick = function(e) {
+                    e.stopPropagation();
+                };
+            });
+        };
+        
+        function closeGlobalModal() {
+            const modal = document.getElementById('globalModal');
+            modal.style.display = 'none';
+            
+            // Clear all event listeners and content
+            const modalButtons = document.getElementById('modalButtons');
+            const modalContent = document.getElementById('modalContent');
+            modalButtons.innerHTML = '';
+            modalContent.innerHTML = '';
+            
+            // Clear callbacks
+            if (modalResolveCallback) {
+                modalResolveCallback(false);
+                modalResolveCallback = null;
+            }
+        }
+        
+        // OVERRIDE NATIVE ALERT
+        window.originalAlert = window.alert;
+        window.alert = function(message) {
+            return showModal('Alert', String(message), 'info');
+        };
+        
+        // OVERRIDE NATIVE CONFIRM
+        window.originalConfirm = window.confirm;
+        window.confirm = function(message) {
+            return showConfirmModal('Confirm', String(message));
+        };
+        
+        // OVERRIDE NATIVE PROMPT
+        window.originalPrompt = window.prompt;
+        window.prompt = function(message, defaultValue = '') {
+            return showPromptModal('Input Required', String(message), defaultValue);
+        };
+        
+        // Add Escape key listener for modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('globalModal');
+                if (modal.style.display === 'flex') {
+                    closeGlobalModal();
+                }
+            }
+        });
+        
         // Check for saved carts and update navbar badge
         async function checkSavedCartsBadge() {
             try {
@@ -431,6 +789,7 @@
                 
             } catch (error) {
                 console.error('Search error:', error);
+                showModal('Search Error', 'An error occurred during search. Please try again.', 'error');
             }
         }
         
@@ -533,11 +892,10 @@
                             <td>${statusBadge}</td>
                             <td>
                                 <a href="/products/edit/${product.id}/" class="btn btn-primary btn-sm">Edit</a>
-                                <a href="/products/delete/${product.id}/" 
-                                   class="btn btn-danger btn-sm"
-                                   onclick="return confirm('Delete ${product.name}?')">
+                                <button onclick="deleteProduct(${product.id}, '${product.name.replace(/'/g, "\\'")}')" 
+                                   class="btn btn-danger btn-sm">
                                    Delete
-                                </a>
+                                </button>
                             </td>
                         </tr>
                     `;
@@ -621,10 +979,41 @@
         
         // Edit staff function (for staff list page)
         function editStaff(userId) {
-            if (confirm('Edit this staff member?')) {
-                // Implement edit staff functionality
-                console.log('Edit staff:', userId);
+            showConfirmModal(
+                'Edit Staff',
+                'Edit this staff member?',
+                function() {
+                    // Implement edit staff functionality
+                    console.log('Edit staff:', userId);
+                }
+            );
+        }
+        
+        // Universal delete confirmation
+        async function deleteProduct(productId, productName) {
+            const result = await confirm(`Delete ${productName}?`);
+            if (result) {
+                try {
+                    const response = await fetch(`/products/delete/${productId}/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': getCookie('csrftoken')
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        showModal('Success', 'Product deleted successfully!', 'success', function() {
+                            location.reload();
+                        });
+                    } else {
+                        showModal('Error', 'Failed to delete product', 'error');
+                    }
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    showModal('Error', 'Failed to delete product', 'error');
+                }
             }
+            return false;
         }
         
         // Get CSRF token for AJAX requests
@@ -642,6 +1031,62 @@
             }
             return cookieValue;
         }
+        
+        // SAVED CART FUNCTIONS
+        async function loadSavedCart(cartId) {
+            try {
+                const response = await fetch(`/api/load-saved-cart/${cartId}/`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Store cart data in sessionStorage
+                    sessionStorage.setItem('cartToLoad', JSON.stringify({
+                        data: result.cart_data,
+                        name: result.cart_name,
+                        saved_cart_id: cartId
+                    }));
+                    
+                    // Show success message and redirect
+                    showModal('Success', 'Cart loaded successfully! Redirecting to POS...', 'success', function() {
+                        window.location.href = "{% url 'home' %}";
+                    });
+                    
+                } else {
+                    showModal('Error', 'Error loading cart: ' + (result.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error loading cart:', error);
+                showModal('Network Error', 'Error loading cart. Please check your connection and try again.', 'error');
+            }
+        }
+        
+        async function deleteSavedCart(cartId, cartName) {
+            const result = await confirm(`Are you sure you want to delete "${cartName}"?`);
+            if (result) {
+                try {
+                    const response = await fetch(`/api/delete-saved-cart/${cartId}/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': getCookie('csrftoken')
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showModal('Success', 'Cart deleted successfully!', 'success', function() {
+                            location.reload();
+                        });
+                    } else {
+                        showModal('Error', 'Error deleting cart: ' + (result.error || 'Unknown error'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting cart:', error);
+                    showModal('Network Error', 'Error deleting cart. Please try again.', 'error');
+                }
+            }
+        }
+        
     </script>
     
     {% block extra_js %}{% endblock %}

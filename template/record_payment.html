@@ -87,13 +87,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const maxAmount = parseFloat('{{ sale.balance }}');
         
         if (amount <= 0) {
-            alert('Please enter a valid payment amount (greater than 0).');
+            showModal('Pleas enter a valid payment amount (greater than 0)');
             amountInput.focus();
             return;
         }
         
         if (amount > maxAmount) {
-            alert('Payment amount cannot exceed the outstanding balance of ₦' + maxAmount.toFixed(2));
+            showModal('Payment amount cannot exceed the outstanding balance of ₦' + maxAmount.toFixed(2));
             amountInput.focus();
             return;
         }

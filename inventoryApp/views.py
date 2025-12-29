@@ -92,19 +92,40 @@ def process_sale(request):
         try:
             data = json.loads(request.body)
             
+            # Get saved cart ID if exists
+            saved_cart_id = data.get('saved_cart_id')
+            saved_cart = None
+            
+            if saved_cart_id:
+                try:
+                    saved_cart = SavedCart.objects.get(id=saved_cart_id, staff=request.user)
+                except SavedCart.DoesNotExist:
+                    saved_cart = None
+            
             # Validate data
             if not data.get('items'):
                 return JsonResponse({'success': False, 'error': 'No items in cart'})
             
-            # Calculate totals correctly
+            # FIX 1: Calculate subtotal WITHOUT subtracting item discounts
+            # Item discounts will be applied separately when creating SaleItem records
             subtotal = sum(
-                Decimal(str(item['price'])) * Decimal(str(item['quantity'])) - Decimal(str(item.get('discount', 0)))
+                Decimal(str(item['price'])) * Decimal(str(item['quantity']))
                 for item in data['items']
             )
             
-            # Apply discount if provided
-            discount = Decimal(str(data.get('discount', 0)))
-            total = subtotal - discount
+            # FIX 2: Calculate total of all item discounts
+            item_discounts_total = sum(
+                Decimal(str(item.get('discount', 0)))
+                for item in data['items']
+            )
+            
+            # FIX 3: Get sale-level discount (this is additional discount at sale level)
+            sale_discount = Decimal(str(data.get('discount', 0)))
+            
+            # FIX 4: Calculate total correctly
+            # Total = (Price × Quantity for all items) - Item discounts - Sale discount
+            total = subtotal - item_discounts_total - sale_discount
+            
             amount_paid = Decimal(str(data.get('amount_paid', 0)))
             balance = total - amount_paid
             
@@ -132,14 +153,14 @@ def process_sale(request):
             else:
                 payment_status = 'unpaid'
             
-            # Create sale
+            # Create sale - store the sale-level discount
             sale = Sale.objects.create(
                 invoice_number=invoice_number,
                 staff=request.user,
                 customer_name=data.get('customer_name', ''),
                 customer_phone=data.get('customer_phone', ''),
                 subtotal=subtotal,
-                discount=discount,
+                discount=sale_discount,  # This is sale-level discount
                 total=total,
                 amount_paid=amount_paid,
                 balance=balance,
@@ -150,15 +171,18 @@ def process_sale(request):
             for item in data.get('items', []):
                 product = Product.objects.get(id=item['product_id'])
                 
-                # Create sale item
+                # FIX 5: Calculate item total (price * quantity - item discount)
+                item_total = (Decimal(str(item['price'])) * Decimal(str(item['quantity']))) - Decimal(str(item.get('discount', 0)))
+                
+                # Create sale item with item-level discount
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
                     product_name=product.name,
                     quantity=item['quantity'],
                     price=item['price'],
-                    discount=item.get('discount', 0),
-                    total=(Decimal(str(item['price'])) * Decimal(str(item['quantity']))) - Decimal(str(item.get('discount', 0)))
+                    discount=item.get('discount', 0),  # Item-level discount
+                    total=item_total
                 )
                 
                 # Update product quantity
@@ -189,12 +213,22 @@ def process_sale(request):
             # Clear pending cart
             PendingCart.objects.filter(staff=request.user).delete()
             
+            # Delete saved cart if it exists (AFTER successful sale creation)
+            if saved_cart:
+                saved_cart.delete()
+                # Also clear any sessionStorage references
+                cart_deleted = True
+            else:
+                cart_deleted = False
+            
             return JsonResponse({
                 'success': True,
                 'sale_id': sale.id,
                 'invoice_number': invoice_number,
                 'total': float(total),
-                'balance': float(balance)
+                'balance': float(balance),
+                'cart_deleted': cart_deleted,
+                'cart_id': saved_cart_id if saved_cart else None
             })
             
         except Exception as e:

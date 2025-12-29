@@ -155,7 +155,7 @@
                 <tr>
                     <td colspan="8" style="text-align: center; padding: 2rem;">
                         <div class="empty-state">
-                            <div class="empty-state-icon"></div>
+                            <div class="empty-state-icon">💰</div>
                             <h3>No Outstanding Debts</h3>
                             <p>All customers have paid their bills in full!</p>
                         </div>
@@ -199,6 +199,7 @@ async function performDebtorSearch() {
         }
     } catch (error) {
         console.error('Search error:', error);
+        showModal('Search Error', 'An error occurred during search.', 'error');
         // Fallback to page reload
         window.location.href = "{% url 'debtors_list' %}?search=" + encodeURIComponent(searchTerm);
     }

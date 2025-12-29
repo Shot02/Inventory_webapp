@@ -166,13 +166,13 @@
         </div>
         
         <div class="cart-actions">
-            <button onclick="loadCart({{ cart.id }})" class="btn btn-success" style="flex: 1;">
+            <button onclick="loadSavedCart({{ cart.id }})" class="btn btn-success" style="flex: 1;">
                 Load Cart
             </button>
             <a href="{% url 'view_saved_cart' cart.id %}" class="btn btn-primary">
                 View
             </a>
-            <button onclick="deleteCart({{ cart.id }}, '{{ cart.cart_name|escapejs }}')" class="btn btn-danger">
+            <button onclick="deleteSavedCart({{ cart.id }}, '{{ cart.cart_name|escapejs }}')" class="btn btn-danger">
                 Delete
             </button>
         </div>
@@ -189,68 +189,4 @@
 </div>
 {% endif %}
 
-<script>
-async function loadCart(cartId) {
-    try {
-        const response = await fetch(`/api/load-saved-cart/${cartId}/`);
-        const result = await response.json();
-        
-        if (result.success) {
-            const loadBtn = event.target;
-            loadBtn.innerHTML = 'Loading...';
-            loadBtn.disabled = true;
-            
-            sessionStorage.setItem('cartToLoad', JSON.stringify({
-                data: result.cart_data,
-                name: result.cart_name,
-                saved_cart_id: cartId
-            }));
-            
-            setTimeout(() => {
-                window.location.href = "{% url 'home' %}";
-            }, 500);
-        }
-    } catch (error) {
-        console.error('Error loading cart:', error);
-    }
-}
-
-async function deleteCart(cartId, cartName) {
-    if (!confirm(`Are you sure you want to delete "${cartName}"?`)) {
-        return;
-    }
-    
-    try {
-        const response = await fetch(`/api/delete-saved-cart/${cartId}/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')
-            }
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            location.reload();
-        }
-    } catch (error) {
-        console.error('Error deleting cart:', error);
-    }
-}
-
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-</script>
 {% endblock %}

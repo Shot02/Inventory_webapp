@@ -414,7 +414,7 @@ function openEditProductModal(productId) {
         // Find the table row with the product data
         const row = document.querySelector(`tr[data-product-id="${productId}"]`);
         if (!row) {
-            alert('Product not found');
+            showModal('Product not found');
             return;
         }
         
@@ -467,7 +467,7 @@ function openEditProductModal(productId) {
         
     } catch (error) {
         console.error('Error opening edit modal:', error);
-        alert('Error loading product data. Please try again.');
+        showModal('Error loading product data. please try again');
     }
 }
 
@@ -575,7 +575,7 @@ document.getElementById('editProductForm').addEventListener('submit', async func
             }, 1000);
             
         } else {
-            alert(result.error || 'Error updating product');
+            showModal(result.error || 'Erro updating product');
             submitBtn.disabled = false;
             submitBtn.innerHTML = 'Save Changes';
         }
