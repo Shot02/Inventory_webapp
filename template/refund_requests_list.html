@@ -186,6 +186,48 @@
         color: #b91c1c;
         border-left: 4px solid #ef4444;
     }
+    
+    /* Toast Notification */
+    .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+        max-width: 300px;
+        color: white;
+        font-weight: 500;
+    }
+    
+    .toast-success { background: #48bb78; }
+    .toast-error { background: #f56565; }
+    .toast-info { background: #667eea; }
+    .toast-warning { background: #ed8936; }
+    
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    @keyframes slideOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
 </style>
 
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
@@ -267,18 +309,14 @@
                                 {% endif %}
                                 
                                 {% if user.role == 'admin' or user.is_superuser %}
-                                <form method="post" action="{% url 'approve_refund_request' refund.id %}" style="display: inline;">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve this refund request?')">
-                                        Approve
-                                    </button>
-                                </form>
-                                <form method="post" action="{% url 'decline_refund_request' refund.id %}" style="display: inline;">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Decline this refund request?')">
-                                        Decline
-                                    </button>
-                                </form>
+                                <button onclick="approveRefundRequest({{ refund.id }}, '{{ refund.customer_name|escapejs }}')" 
+                                        class="btn btn-success btn-sm">
+                                    Approve
+                                </button>
+                                <button onclick="declineRefundRequest({{ refund.id }}, '{{ refund.customer_name|escapejs }}')" 
+                                        class="btn btn-danger btn-sm">
+                                    Decline
+                                </button>
                                 {% endif %}
                             {% else %}
                                 <span class="btn btn-secondary btn-sm" style="opacity: 0.7; cursor: default;">
@@ -367,17 +405,35 @@
 </div>
 
 <script>
-// Open edit refund modal
+// Toast notification function
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <div class="toast-content">
+            ${message}
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 3000);
+}
+
+// Open edit refund modal - NO ALERT
 function openEditRefundModal(refundId) {
     try {
-        // Find the table row with the refund data
         const row = document.querySelector(`tr[data-refund-id="${refundId}"]`);
         if (!row) {
-            showModal('Refund request not found');
+            showToast('Refund request not found', 'error');
             return;
         }
         
-        // Get data from data attributes
         const refundData = {
             id: row.dataset.refundId,
             customerName: row.dataset.customerName,
@@ -394,10 +450,8 @@ function openEditRefundModal(refundId) {
         const statusText = document.getElementById('refundStatusText');
         const statusActions = document.getElementById('refundStatusActions');
         
-        // Remove all status classes
         statusInfo.classList.remove('pending', 'approved', 'declined');
         
-        // Add appropriate class and content
         if (refundData.status === 'pending') {
             statusInfo.classList.add('pending');
             statusText.textContent = 'Pending';
@@ -438,18 +492,18 @@ function openEditRefundModal(refundId) {
         
         submitBtn.disabled = !isPending;
         submitBtn.textContent = isPending ? ' Save Changes' : 'Cannot Edit Processed Request';
+        submitBtn.style.background = isPending ? '' : '#9ca3af';
         
         // Show modal
         document.getElementById('editRefundModal').style.display = 'flex';
         
-        // Focus on first editable field if pending
         if (isPending) {
             document.getElementById('editRefundCustomerName').focus();
         }
         
     } catch (error) {
         console.error('Error opening edit modal:', error);
-        showModal('Error loading refund data. Please try again.');
+        showToast('Error loading refund data', 'error');
     }
 }
 
@@ -458,71 +512,82 @@ function closeEditRefundModal() {
     document.getElementById('editRefundModal').style.display = 'none';
     document.getElementById('editRefundForm').reset();
     
-    // Re-enable all form elements
     const form = document.getElementById('editRefundForm');
     form.querySelectorAll('input, textarea, button').forEach(element => {
         element.disabled = false;
     });
+    
+    const submitBtn = document.getElementById('editRefundSubmitBtn');
+    submitBtn.textContent = 'Save Changes';
+    submitBtn.style.background = '';
 }
 
-// Handle edit refund form submission
+// Handle edit refund form submission - NO CONFIRMATION POPUP
 document.getElementById('editRefundForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const submitBtn = document.getElementById('editRefundSubmitBtn');
     const formData = new FormData(this);
     const refundId = document.getElementById('editRefundId').value;
-    const status = document.querySelector(`tr[data-refund-id="${refundId}"]`).dataset.status;
+    const status = document.querySelector(`tr[data-refund-id="${refundId}"]`)?.dataset.status;
     
     // Check if request is still pending
     if (status !== 'pending') {
-        showModal('This refund request has already been processed and cannot be edited');
-        
+        showToast('This refund request has already been processed', 'warning');
         closeEditRefundModal();
         return;
     }
     
-    // Basic validation
+    // Basic validation with visual feedback
     const customerName = document.getElementById('editRefundCustomerName').value.trim();
     const customerPhone = document.getElementById('editRefundCustomerPhone').value.trim();
     const reason = document.getElementById('editRefundReason').value.trim();
     const amount = parseFloat(document.getElementById('editRefundAmount').value) || 0;
     
+    // Validation feedback
+    let isValid = true;
+    
     if (!customerName) {
-        showModal('Customer name is required');
         document.getElementById('editRefundCustomerName').focus();
-        return;
+        document.getElementById('editRefundCustomerName').style.borderColor = '#f56565';
+        isValid = false;
+    } else {
+        document.getElementById('editRefundCustomerName').style.borderColor = '#e0e0e0';
     }
     
     if (!customerPhone) {
-        showModal('Customer phone is required');
         document.getElementById('editRefundCustomerPhone').focus();
-        return;
+        document.getElementById('editRefundCustomerPhone').style.borderColor = '#f56565';
+        isValid = false;
+    } else {
+        document.getElementById('editRefundCustomerPhone').style.borderColor = '#e0e0e0';
     }
     
     if (!reason) {
-        showModal('Refund reason is required');
         document.getElementById('editRefundReason').focus();
-        return;
+        document.getElementById('editRefundReason').style.borderColor = '#f56565';
+        isValid = false;
+    } else {
+        document.getElementById('editRefundReason').style.borderColor = '#e0e0e0';
     }
     
     if (amount <= 0) {
-        showModal('Please enter a valid refund amount (greater than 0)');
         document.getElementById('editRefundAmount').focus();
-        return;
+        document.getElementById('editRefundAmount').style.borderColor = '#f56565';
+        isValid = false;
+    } else {
+        document.getElementById('editRefundAmount').style.borderColor = '#e0e0e0';
     }
     
-    // Confirm before submitting
-    if (!confirm('Are you sure you want to update this refund request?')) {
+    if (!isValid) {
+        showToast('Please fill in all required fields correctly', 'error');
         return;
     }
     
     try {
-        // Show loading state
         submitBtn.disabled = true;
         submitBtn.innerHTML = 'Saving...';
         
-        // Send AJAX request to update refund
         const response = await fetch(`/refund-requests/edit/${refundId}/`, {
             method: 'POST',
             body: formData,
@@ -535,29 +600,115 @@ document.getElementById('editRefundForm').addEventListener('submit', async funct
         const result = await response.json();
         
         if (result.success) {
-            // Show success message
             submitBtn.innerHTML = '✓ Saved!';
             submitBtn.style.background = '#10b981';
             
-            // Close modal and reload after delay
+            showToast('Refund request updated successfully!', 'success');
+            
             setTimeout(() => {
                 closeEditRefundModal();
                 location.reload();
-            }, 1000);
+            }, 1500);
             
         } else {
-            showModal(result.error || 'Error updating refund reguests');
+            showToast(result.error || 'Error updating refund request', 'error');
             submitBtn.disabled = false;
             submitBtn.innerHTML = 'Save Changes';
         }
         
     } catch (error) {
         console.error('Network error:', error);
-        showModal('Network error. Please check your connection and try again');
+        showToast('Network error. Please try again.', 'error');
         submitBtn.disabled = false;
         submitBtn.innerHTML = 'Save Changes';
     }
 });
+
+// APPROVE REFUND REQUEST - KEEP CONFIRMATION FOR IMPORTANT ACTION
+async function approveRefundRequest(refundId, customerName) {
+    const result = await confirm(`Are you sure you want to approve refund for "${customerName}"?`);
+    if (result) {
+        try {
+            // Find and disable the approve button
+            const approveBtn = document.querySelector(`button[onclick="approveRefundRequest(${refundId}, '${customerName}')"]`);
+            if (approveBtn) {
+                approveBtn.disabled = true;
+                approveBtn.innerHTML = 'Approving...';
+            }
+            
+            const response = await fetch(`/refund-requests/approve/${refundId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            if (response.ok) {
+                showToast('Refund request approved successfully!', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                showToast('Failed to approve refund request', 'error');
+                if (approveBtn) {
+                    approveBtn.disabled = false;
+                    approveBtn.innerHTML = 'Approve';
+                }
+            }
+        } catch (error) {
+            console.error('Approve error:', error);
+            showToast('Network error. Please try again.', 'error');
+            const approveBtn = document.querySelector(`button[onclick="approveRefundRequest(${refundId}, '${customerName}')"]`);
+            if (approveBtn) {
+                approveBtn.disabled = false;
+                approveBtn.innerHTML = 'Approve';
+            }
+        }
+    }
+}
+
+// DECLINE REFUND REQUEST - KEEP CONFIRMATION FOR IMPORTANT ACTION
+async function declineRefundRequest(refundId, customerName) {
+    const result = await confirm(`Are you sure you want to decline refund for "${customerName}"?`);
+    if (result) {
+        try {
+            // Find and disable the decline button
+            const declineBtn = document.querySelector(`button[onclick="declineRefundRequest(${refundId}, '${customerName}')"]`);
+            if (declineBtn) {
+                declineBtn.disabled = true;
+                declineBtn.innerHTML = 'Declining...';
+            }
+            
+            const response = await fetch(`/refund-requests/decline/${refundId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            if (response.ok) {
+                showToast('Refund request declined successfully!', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                showToast('Failed to decline refund request', 'error');
+                if (declineBtn) {
+                    declineBtn.disabled = false;
+                    declineBtn.innerHTML = 'Decline';
+                }
+            }
+        } catch (error) {
+            console.error('Decline error:', error);
+            showToast('Network error. Please try again.', 'error');
+            const declineBtn = document.querySelector(`button[onclick="declineRefundRequest(${refundId}, '${customerName}')"]`);
+            if (declineBtn) {
+                declineBtn.disabled = false;
+                declineBtn.innerHTML = 'Decline';
+            }
+        }
+    }
+}
 
 // Close modal when clicking outside
 document.getElementById('editRefundModal').addEventListener('click', function(e) {
@@ -600,14 +751,12 @@ async function performRefundSearch() {
     const searchCount = document.getElementById('refundSearchCount');
     
     if (!searchTerm) {
-        // Show all results
         updateRefundTable({ results: [] });
         updateRefundSearchCount(0);
         return;
     }
     
     try {
-        // Filter locally
         const tableBody = document.getElementById('refundTableBody');
         const rows = tableBody.querySelectorAll('tr');
         const filteredResults = [];
@@ -698,12 +847,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // If there's a search query in URL, update the input
         const urlParams = new URLSearchParams(window.location.search);
         const searchParam = urlParams.get('search');
         if (searchParam) {
             searchInput.value = searchParam;
-            // Trigger search if there's a search term
             setTimeout(() => debounceRefundSearch(), 100);
         }
     }

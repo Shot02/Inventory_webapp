@@ -210,13 +210,10 @@ def process_sale(request):
                     created_by=request.user
                 )
             
-            # Clear pending cart
+
             PendingCart.objects.filter(staff=request.user).delete()
-            
-            # Delete saved cart if it exists (AFTER successful sale creation)
             if saved_cart:
                 saved_cart.delete()
-                # Also clear any sessionStorage references
                 cart_deleted = True
             else:
                 cart_deleted = False

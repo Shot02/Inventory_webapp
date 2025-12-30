@@ -272,6 +272,48 @@
         .badge-warning { background: #fef3c7; color: #92400e; }
         .badge-danger  { background: #fee2e2; color: #b91c1c; }
         
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+            max-width: 300px;
+            color: white;
+            font-weight: 500;
+        }
+        
+        .toast-success { background: #48bb78; }
+        .toast-error { background: #f56565; }
+        .toast-info { background: #667eea; }
+        .toast-warning { background: #ed8936; }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
         /* Global Modal Styles */
         .global-modal-overlay {
             position: fixed;
@@ -355,11 +397,11 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <!-- Global Modal -->
+    <!-- Global Modal - Only for important confirmations -->
     <div id="globalModal" class="global-modal-overlay">
         <div class="global-modal-content">
             <div class="global-modal-title">
-                <h3 id="modalTitle" style="margin: 0;">Alert</h3>
+                <h3 id="modalTitle" style="margin: 0;">Confirm</h3>
                 <button id="modalCloseBtn" class="global-modal-close">&times;</button>
             </div>
             <div id="modalContent" style="margin-bottom: 1rem;">
@@ -424,13 +466,21 @@
     </div>
     
     <script>
-        // GLOBAL MODAL SYSTEM - REPLACES ALL ALERTS
+        // GLOBAL MODAL SYSTEM - ONLY FOR IMPORTANT CONFIRMATIONS
         let modalResolveCallback = null;
         let modalPromise = null;
         
-        // Show basic modal (replaces alert())
+        // Show basic modal (replaces alert() - but only for errors/warnings)
         window.showModal = function(title, message, type = 'info', onClose = null) {
             return new Promise((resolve) => {
+                // Don't show modal for success/info messages - use toast instead
+                if (type === 'success' || type === 'info') {
+                    showToast(message, type);
+                    resolve(true);
+                    return;
+                }
+                
+                // Only show modal for errors and warnings
                 const modal = document.getElementById('globalModal');
                 const modalTitle = document.getElementById('modalTitle');
                 const modalContent = document.getElementById('modalContent');
@@ -487,7 +537,7 @@
             });
         };
         
-        // Show confirm modal (replaces confirm())
+        // Show confirm modal (replaces confirm() - only for important actions)
         window.showConfirmModal = function(title, message, confirmCallback, cancelCallback = null) {
             return new Promise((resolve) => {
                 const modal = document.getElementById('globalModal');
@@ -659,20 +709,85 @@
             }
         }
         
-        // OVERRIDE NATIVE ALERT
+        // TOAST NOTIFICATION SYSTEM - For non-critical messages
+        function showToast(message, type = 'success') {
+            // Create toast notification
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <div class="toast-content">
+                    ${message}
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 3000);
+        }
+        
+        // MODIFIED ALERT/CONFIRM OVERRIDES - MINIMAL POPUPS
+        // Save original functions
         window.originalAlert = window.alert;
-        window.alert = function(message) {
-            return showModal('Alert', String(message), 'info');
-        };
-        
-        // OVERRIDE NATIVE CONFIRM
         window.originalConfirm = window.confirm;
-        window.confirm = function(message) {
-            return showConfirmModal('Confirm', String(message));
+        window.originalPrompt = window.prompt;
+        
+        // Override alert() - show toast for success, modal only for errors/warnings
+        window.alert = function(message) {
+            const msg = String(message).toLowerCase();
+            
+            // Check if this is an important alert that needs modal
+            const importantAlerts = [
+                'error', 'failed', 'invalid', 'not found', 'required', 
+                'empty cart', 'no product', 'insufficient', 'permission denied',
+                'not authorized', 'cannot', 'unable'
+            ];
+            
+            if (importantAlerts.some(keyword => msg.includes(keyword))) {
+                return showModal('Alert', String(message), 'error');
+            }
+            
+            // For all other alerts, show toast and log to console
+            console.log("Info:", message);
+            
+            // Show success/info as toast
+            if (msg.includes('success') || msg.includes('saved') || msg.includes('added')) {
+                showToast(message, 'success');
+            } else {
+                showToast(message, 'info');
+            }
+            
+            // Return resolved promise to prevent blocking
+            return Promise.resolve();
         };
         
-        // OVERRIDE NATIVE PROMPT
-        window.originalPrompt = window.prompt;
+        // Override confirm() - only for important actions
+        window.confirm = function(message) {
+            const msg = String(message).toLowerCase();
+            
+            // List of important actions that need confirmation
+            const importantActions = [
+                'delete', 'remove', 'logout', 'discard', 'cancel order',
+                'reset', 'clear all', 'permanently', 'irreversible',
+                'cannot undo', 'are you sure'
+            ];
+            
+            // Check if this is an important confirmation
+            if (importantActions.some(keyword => msg.includes(keyword))) {
+                return showConfirmModal('Confirm', String(message));
+            }
+            
+            // For non-important confirmations, just return true automatically
+            console.log("Auto-confirmed:", message);
+            return Promise.resolve(true);
+        };
+        
+        // Keep prompt override as is
         window.prompt = function(message, defaultValue = '') {
             return showPromptModal('Input Required', String(message), defaultValue);
         };
@@ -708,17 +823,99 @@
             }
         }
 
+        // SALES SPECIFIC FUNCTIONS - Minimal alerts
+        window.handleSalesSubmit = function(action, formId = 'salesForm') {
+            const cartItems = document.querySelectorAll('.cart-item');
+            
+            // Only show alert for empty cart
+            if (cartItems.length === 0) {
+                return showModal(
+                    'Empty Cart', 
+                    'Please add at least one product before ' + action, 
+                    'warning'
+                );
+            }
+            
+            // For non-empty cart, proceed without alert
+            const form = document.getElementById(formId);
+            if (form) {
+                // Set action type if needed
+                const actionInput = form.querySelector('input[name="action"]');
+                if (actionInput) {
+                    actionInput.value = action;
+                }
+                
+                // Submit form silently
+                form.submit();
+            }
+            
+            return false;
+        };
+        
         // REAL-TIME SEARCH FUNCTIONALITY
         document.addEventListener('DOMContentLoaded', function() {
             checkSavedCartsBadge();
             
             // Initialize real-time search for all pages
             initializeRealTimeSearch();
+            
+            // Add visual feedback for form submissions
+            setupFormVisualFeedback();
         });
+        
+        // Set up visual feedback for forms
+        function setupFormVisualFeedback() {
+            // Add loading states to submit buttons
+            document.addEventListener('submit', function(e) {
+                const form = e.target;
+                const submitBtn = form.querySelector('button[type="submit"]');
+                
+                if (submitBtn && !form.classList.contains('no-loading')) {
+                    // Save original text
+                    const originalText = submitBtn.innerHTML;
+                    submitBtn.dataset.originalText = originalText;
+                    
+                    // Show loading state
+                    submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                    submitBtn.disabled = true;
+                    
+                    // Restore after 3 seconds (in case of error)
+                    setTimeout(() => {
+                        if (submitBtn.disabled) {
+                            submitBtn.innerHTML = originalText;
+                            submitBtn.disabled = false;
+                        }
+                    }, 3000);
+                }
+            });
+            
+            // Add spinner style if not exists
+            if (!document.querySelector('style[data-spinner]')) {
+                const spinnerStyle = document.createElement('style');
+                spinnerStyle.setAttribute('data-spinner', 'true');
+                spinnerStyle.textContent = `
+                    .spinner {
+                        display: inline-block;
+                        width: 16px;
+                        height: 16px;
+                        border: 2px solid rgba(255,255,255,0.3);
+                        border-radius: 50%;
+                        border-top-color: #fff;
+                        animation: spin 1s ease-in-out infinite;
+                        margin-right: 8px;
+                        vertical-align: middle;
+                    }
+                    
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `;
+                document.head.appendChild(spinnerStyle);
+            }
+        }
         
         // Simple real-time search function
         function initializeRealTimeSearch() {
-            // Get all search inputs
             const searchInputs = document.querySelectorAll('.search-input');
             
             searchInputs.forEach(input => {
@@ -731,7 +928,6 @@
                     }, 300);
                 });
                 
-                // Escape key to clear
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Escape') {
                         this.value = '';
@@ -746,7 +942,6 @@
             const pagePath = window.location.pathname;
             
             if (!searchTerm) {
-                // If search is empty, reload page to show all results
                 location.reload();
                 return;
             }
@@ -755,7 +950,6 @@
                 let apiUrl = '';
                 let tableId = '';
                 
-                // Determine which API to call based on page
                 if (pagePath.includes('admin_dashboard')) {
                     if (inputElement.id === 'salesSearchInput') {
                         apiUrl = `/api/search/sales/?q=${encodeURIComponent(searchTerm)}`;
@@ -789,7 +983,7 @@
                 
             } catch (error) {
                 console.error('Search error:', error);
-                showModal('Search Error', 'An error occurred during search. Please try again.', 'error');
+                showToast('Search error occurred', 'error');
             }
         }
         
@@ -810,7 +1004,6 @@
             
             let rowsHtml = '';
             
-            // Handle different table types based on tableId
             if (tableId === 'salesTableBody') {
                 results.forEach(sale => {
                     const date = new Date(sale.created_at);
@@ -963,7 +1156,6 @@
                 });
             }
             
-            // Add warning if limited to 50 results
             if (limited) {
                 rowsHtml += `
                     <tr style="background: #fff3cd;">
@@ -979,19 +1171,13 @@
         
         // Edit staff function (for staff list page)
         function editStaff(userId) {
-            showConfirmModal(
-                'Edit Staff',
-                'Edit this staff member?',
-                function() {
-                    // Implement edit staff functionality
-                    console.log('Edit staff:', userId);
-                }
-            );
+            // Just redirect to edit page, no confirmation needed
+            window.location.href = `/staff/edit/${userId}/`;
         }
         
-        // Universal delete confirmation
+        // Universal delete confirmation - KEEP THIS MODAL (important action)
         async function deleteProduct(productId, productName) {
-            const result = await confirm(`Delete ${productName}?`);
+            const result = await confirm(`Are you sure you want to delete "${productName}"? This action cannot be undone.`);
             if (result) {
                 try {
                     const response = await fetch(`/products/delete/${productId}/`, {
@@ -1002,15 +1188,16 @@
                     });
                     
                     if (response.ok) {
-                        showModal('Success', 'Product deleted successfully!', 'success', function() {
+                        showToast('Product deleted successfully!', 'success');
+                        setTimeout(() => {
                             location.reload();
-                        });
+                        }, 1500);
                     } else {
-                        showModal('Error', 'Failed to delete product', 'error');
+                        showToast('Failed to delete product', 'error');
                     }
                 } catch (error) {
                     console.error('Delete error:', error);
-                    showModal('Error', 'Failed to delete product', 'error');
+                    showToast('Failed to delete product', 'error');
                 }
             }
             return false;
@@ -1033,34 +1220,35 @@
         }
         
         // SAVED CART FUNCTIONS
-        async function loadSavedCart(cartId) {
+        async function loadSavedCart(cartId, cartName) {
+            // No confirmation needed for loading cart
             try {
                 const response = await fetch(`/api/load-saved-cart/${cartId}/`);
                 const result = await response.json();
                 
                 if (result.success) {
-                    // Store cart data in sessionStorage
                     sessionStorage.setItem('cartToLoad', JSON.stringify({
                         data: result.cart_data,
                         name: result.cart_name,
                         saved_cart_id: cartId
                     }));
                     
-                    // Show success message and redirect
-                    showModal('Success', 'Cart loaded successfully! Redirecting to POS...', 'success', function() {
+                    showToast('Cart loaded successfully! Redirecting...', 'success');
+                    setTimeout(() => {
                         window.location.href = "{% url 'home' %}";
-                    });
+                    }, 1000);
                     
                 } else {
-                    showModal('Error', 'Error loading cart: ' + (result.error || 'Unknown error'), 'error');
+                    showToast('Error loading cart', 'error');
                 }
             } catch (error) {
                 console.error('Error loading cart:', error);
-                showModal('Network Error', 'Error loading cart. Please check your connection and try again.', 'error');
+                showToast('Error loading cart', 'error');
             }
         }
         
         async function deleteSavedCart(cartId, cartName) {
+            // KEEP CONFIRMATION FOR DELETE
             const result = await confirm(`Are you sure you want to delete "${cartName}"?`);
             if (result) {
                 try {
@@ -1074,15 +1262,16 @@
                     const result = await response.json();
                     
                     if (result.success) {
-                        showModal('Success', 'Cart deleted successfully!', 'success', function() {
+                        showToast('Cart deleted successfully!', 'success');
+                        setTimeout(() => {
                             location.reload();
-                        });
+                        }, 1500);
                     } else {
-                        showModal('Error', 'Error deleting cart: ' + (result.error || 'Unknown error'), 'error');
+                        showToast('Error deleting cart', 'error');
                     }
                 } catch (error) {
                     console.error('Error deleting cart:', error);
-                    showModal('Network Error', 'Error deleting cart. Please try again.', 'error');
+                    showToast('Error deleting cart', 'error');
                 }
             }
         }

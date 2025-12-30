@@ -103,6 +103,30 @@
         font-size: 0.9rem;
         color: #666;
     }
+    
+    .toast-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: #48bb78;
+        color: white;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        font-weight: 500;
+        animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
 </style>
 {% endblock %}
 
@@ -189,4 +213,123 @@
 </div>
 {% endif %}
 
+<script>
+// Toast notification function
+function showToast(message, type = 'info') {
+    // Remove existing toast if any
+    const existingToast = document.querySelector('.toast-notification');
+    if (existingToast) {
+        existingToast.remove();
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast-notification`;
+    
+    // Set background color based on type
+    let backgroundColor;
+    switch(type) {
+        case 'success': backgroundColor = '#48bb78'; break;
+        case 'error': backgroundColor = '#f56565'; break;
+        case 'warning': backgroundColor = '#ed8936'; break;
+        default: backgroundColor = '#4299e1'; break;
+    }
+    
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: ${backgroundColor};
+        color: white;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        font-weight: 500;
+        animation: slideIn 0.3s ease;
+    `;
+    
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// Load saved cart function
+async function loadSavedCart(cartId) {
+    try {
+        const response = await fetch(`/api/saved-cart/${cartId}/`);
+        const data = await response.json();
+        
+        if (data.success) {
+            // Store cart data in sessionStorage for POS page to load
+            sessionStorage.setItem('cartToLoad', JSON.stringify({
+                name: data.cart_name,
+                data: data.cart_data,
+                saved_cart_id: cartId
+            }));
+            
+            // Show toast notification instead of popup
+            showToast(`Cart "${data.cart_name}" loaded. Redirecting to POS...`, 'success');
+            
+            // Redirect to POS after a short delay
+            setTimeout(() => {
+                window.location.href = "{% url 'home' %}";
+            }, 1500);
+            
+        } else {
+            showToast('Failed to load cart: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Load cart error:', error);
+        showToast('Failed to load cart. Please check your connection.', 'error');
+    }
+}
+
+// Delete saved cart function
+async function deleteSavedCart(cartId, cartName) {
+    // KEEP confirmation for deletion (destructive action)
+    showConfirmModal(
+        'Delete Saved Cart',
+        `Are you sure you want to delete cart "${cartName}"?`,
+        async function() {
+            try {
+                const response = await fetch(`/api/saved-cart/${cartId}/delete/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Show toast instead of popup
+                    showToast(`Cart "${cartName}" deleted successfully!`, 'success');
+                    
+                    // Reload page after a short delay
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showToast('Failed to delete cart: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Delete cart error:', error);
+                showToast('Failed to delete cart. Please check your connection.', 'error');
+            }
+        }
+    );
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof window.deleteSavedCart === 'undefined') {
+    } else {
+    }
+});
+</script>
 {% endblock %}

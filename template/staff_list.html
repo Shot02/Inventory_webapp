@@ -120,6 +120,48 @@
         gap: 0.5rem;
         cursor: pointer;
     }
+    
+    /* Toast Notification */
+    .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+        max-width: 300px;
+        color: white;
+        font-weight: 500;
+    }
+    
+    .toast-success { background: #48bb78; }
+    .toast-error { background: #f56565; }
+    .toast-info { background: #667eea; }
+    .toast-warning { background: #ed8936; }
+    
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    @keyframes slideOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
 </style>
 
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
@@ -268,17 +310,35 @@
 </div>
 
 <script>
-// Open edit modal with user data
+// Toast notification function
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <div class="toast-content">
+            ${message}
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 3000);
+}
+
+// Open edit modal with user data - NO ALERT
 function openEditModal(userId) {
     try {
-        // Find the table row with the user data
         const row = document.querySelector(`tr[data-user-id="${userId}"]`);
         if (!row) {
-            alert('User not found');
+            showToast('User not found', 'error');
             return;
         }
         
-        // Get data from data attributes
         const userData = {
             id: row.dataset.userId,
             username: row.dataset.username,
@@ -290,7 +350,6 @@ function openEditModal(userId) {
             isActive: row.dataset.isActive === 'true'
         };
         
-        // Populate the form
         document.getElementById('editUserId').value = userData.id;
         document.getElementById('editUsername').value = userData.username;
         document.getElementById('editFirstName').value = userData.firstName;
@@ -300,13 +359,12 @@ function openEditModal(userId) {
         document.getElementById('editRole').value = userData.role;
         document.getElementById('editIsActive').checked = userData.isActive;
         
-        // Show modal
         document.getElementById('editStaffModal').style.display = 'flex';
         document.getElementById('editUsername').focus();
         
     } catch (error) {
         console.error('Error opening edit modal:', error);
-        alert('Error loading user data. Please try again.');
+        showToast('Error loading user data', 'error');
     }
 }
 
@@ -314,45 +372,67 @@ function openEditModal(userId) {
 function closeEditModal() {
     document.getElementById('editStaffModal').style.display = 'none';
     document.getElementById('editStaffForm').reset();
+    
+    // Reset border colors
+    document.querySelectorAll('#editStaffForm .form-control').forEach(input => {
+        input.style.borderColor = '#e0e0e0';
+    });
 }
 
-// Handle edit form submission
+// Handle edit form submission - NO CONFIRMATION POPUP
 document.getElementById('editStaffForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const submitBtn = document.getElementById('editSubmitBtn');
     const formData = new FormData(this);
     
-    // Basic validation
+    // Basic validation with visual feedback
     const username = document.getElementById('editUsername').value.trim();
     const email = document.getElementById('editEmail').value.trim();
+    const role = document.getElementById('editRole').value;
+    
+    // Reset border colors
+    document.querySelectorAll('#editStaffForm .form-control').forEach(input => {
+        input.style.borderColor = '#e0e0e0';
+    });
+    
+    // Validation
+    let isValid = true;
     
     if (!username) {
-        alert('Username is required');
         document.getElementById('editUsername').focus();
-        return;
+        document.getElementById('editUsername').style.borderColor = '#f56565';
+        isValid = false;
     }
     
     if (!email) {
-        alert('Email is required');
-        document.getElementById('editEmail').focus();
-        return;
+        if (isValid) document.getElementById('editEmail').focus();
+        document.getElementById('editEmail').style.borderColor = '#f56565';
+        isValid = false;
+    } else {
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            if (isValid) document.getElementById('editEmail').focus();
+            document.getElementById('editEmail').style.borderColor = '#f56565';
+            isValid = false;
+        }
     }
     
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        alert('Please enter a valid email address');
-        document.getElementById('editEmail').focus();
+    if (!role) {
+        document.getElementById('editRole').style.borderColor = '#f56565';
+        isValid = false;
+    }
+    
+    if (!isValid) {
+        showToast('Please fill in all required fields correctly', 'error');
         return;
     }
     
     try {
-        // Show loading state
         submitBtn.disabled = true;
         submitBtn.innerHTML = 'Saving...';
         
-        // Send AJAX request
         const response = await fetch('{% url "edit_staff" %}', {
             method: 'POST',
             body: formData,
@@ -365,25 +445,25 @@ document.getElementById('editStaffForm').addEventListener('submit', async functi
         const result = await response.json();
         
         if (result.success) {
-            // Show success message
             submitBtn.innerHTML = '✓ Saved!';
             submitBtn.style.background = '#10b981';
             
-            // Close modal and reload after delay
+            showToast('Staff member updated successfully!', 'success');
+            
             setTimeout(() => {
                 closeEditModal();
                 location.reload();
-            }, 1000);
+            }, 1500);
             
         } else {
-            alert(result.error || 'Error updating staff member');
+            showToast(result.error || 'Error updating staff member', 'error');
             submitBtn.disabled = false;
             submitBtn.innerHTML = 'Save Changes';
         }
         
     } catch (error) {
         console.error('Network error:', error);
-        alert('Network error. Please check your connection and try again.');
+        showToast('Network error. Please try again.', 'error');
         submitBtn.disabled = false;
         submitBtn.innerHTML = 'Save Changes';
     }
@@ -403,7 +483,7 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// Real-time search for staff
+// Real-time search for staff - NO ALERTS
 let staffDebounceTimer;
 
 function debounceStaffSearch() {
@@ -418,7 +498,6 @@ async function performStaffSearch() {
     const searchCount = document.getElementById('staffSearchCount');
     
     if (searchTerm === '') {
-        // Reload page without search
         window.location.href = "{% url 'staff_list' %}";
         return;
     }
@@ -540,15 +619,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // Focus on search input
         searchInput.focus();
         
-        // If there's a search query in URL, update the input
         const urlParams = new URLSearchParams(window.location.search);
         const searchParam = urlParams.get('search');
         if (searchParam) {
             searchInput.value = searchParam;
-            // Trigger search if there's a search term
             setTimeout(() => debounceStaffSearch(), 100);
         }
     }

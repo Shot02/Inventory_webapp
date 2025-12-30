@@ -466,7 +466,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const cartData = JSON.parse(cartToLoad);
             loadCartData(cartData.data);
             
-            // Show message that saved cart was loaded
+            // Show message that saved cart was loaded - KEEP THIS ONE
             showModal('Saved Cart Loaded', `Cart "${cartData.name}" has been loaded. Complete the sale to remove it from saved carts.`, 'info');
             
         } catch (error) {
@@ -853,7 +853,8 @@ async function saveCart() {
         
         if (result.success) {
             closeSaveCartModal();
-            showModal('Success', 'Cart saved successfully!', 'success');
+            // REMOVED UNNECESSARY POPUP: Just show a subtle notification or update UI
+            showToast('Cart saved successfully!', 'success');
         } else {
             showModal('Error', 'Failed to save cart: ' + (result.error || 'Unknown error'), 'error');
         }
@@ -989,9 +990,8 @@ async function processSale() {
                     window.location.href = `/receipt/${result.sale_id}/`;
                 });
             } else {
-                showModal('Success', 'Sale processed successfully! Redirecting to receipt...', 'success', function() {
-                    window.location.href = `/receipt/${result.sale_id}/`;
-                });
+                // REMOVED UNNECESSARY POPUP: Directly redirect to receipt
+                window.location.href = `/receipt/${result.sale_id}/`;
             }
             
         } else {
@@ -1036,6 +1036,51 @@ function loadCartData(cartData) {
         document.getElementById('amountPaid').value = parseFloat(cartData.amount_paid).toFixed(2);
         validateAmount();
     }
+}
+
+// ========== TOAST NOTIFICATION FUNCTION ==========
+function showToast(message, type = 'info') {
+    // Remove existing toast if any
+    const existingToast = document.querySelector('.toast-notification');
+    if (existingToast) {
+        existingToast.remove();
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast-notification toast-${type}`;
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: ${type === 'success' ? '#48bb78' : type === 'error' ? '#f56565' : '#4299e1'};
+        color: white;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        font-weight: 500;
+        animation: slideIn 0.3s ease;
+    `;
+    
+    // Add keyframe animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 // ========== EVENT LISTENERS ==========

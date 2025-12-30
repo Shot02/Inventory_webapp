@@ -22,8 +22,10 @@
             <label>Payment Amount *</label>
             <input type="number" name="amount" class="form-control" 
                    step="0.01" min="0.01" max="{{ sale.balance|floatformat:2 }}" 
-                   placeholder="Enter payment amount" required>
+                   placeholder="Enter payment amount" required
+                   id="paymentAmount">
             <small style="color: #666;">Maximum: ₦{{ sale.balance|floatformat:2 }}</small>
+            <small id="amountError" style="color: #dc3545; display: none;"></small>
         </div>
         
         <div class="form-group">
@@ -54,46 +56,77 @@
     </form>
 </div>
 
+<style>
+    .error-message {
+        color: #dc3545;
+        font-size: 0.9rem;
+        margin-top: 0.25rem;
+        display: none;
+    }
+    
+    .input-error {
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+    }
+</style>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('paymentForm');
     const submitBtn = document.getElementById('submitBtn');
-    const amountInput = form.querySelector('input[name="amount"]');
+    const amountInput = document.getElementById('paymentAmount');
+    const amountError = document.getElementById('amountError');
+    const maxAmount = parseFloat('{{ sale.balance }}');
     
     // Set focus on amount input
     amountInput.focus();
     
-    // Validate amount on input
+    // Real-time validation
     amountInput.addEventListener('input', function() {
-        const maxAmount = parseFloat('{{ sale.balance }}');
         const enteredAmount = parseFloat(this.value) || 0;
         
-        if (enteredAmount > maxAmount) {
-            this.value = maxAmount.toFixed(2);
-        }
+        // Clear any previous error
+        amountError.style.display = 'none';
+        amountInput.classList.remove('input-error');
         
+        // Validate amount
         if (enteredAmount <= 0) {
+            showError('Please enter a payment amount greater than 0');
+            submitBtn.disabled = true;
+        } else if (enteredAmount > maxAmount) {
+            showError(`Payment amount cannot exceed ₦${maxAmount.toFixed(2)}`);
             submitBtn.disabled = true;
         } else {
             submitBtn.disabled = false;
         }
     });
     
+    // Show inline error
+    function showError(message) {
+        amountError.textContent = message;
+        amountError.style.display = 'block';
+        amountInput.classList.add('input-error');
+    }
+    
     // Form submission
     form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        
         const amount = parseFloat(amountInput.value) || 0;
-        const maxAmount = parseFloat('{{ sale.balance }}');
         
+        // Clear any previous error
+        amountError.style.display = 'none';
+        amountInput.classList.remove('input-error');
+        
+        // Validate amount
         if (amount <= 0) {
-            showModal('Pleas enter a valid payment amount (greater than 0)');
+            e.preventDefault();
+            showError('Please enter a payment amount greater than 0');
             amountInput.focus();
             return;
         }
         
         if (amount > maxAmount) {
-            showModal('Payment amount cannot exceed the outstanding balance of ₦' + maxAmount.toFixed(2));
+            e.preventDefault();
+            showError(`Payment amount cannot exceed ₦${maxAmount.toFixed(2)}`);
             amountInput.focus();
             return;
         }
@@ -102,8 +135,6 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.disabled = true;
         submitBtn.innerHTML = 'Processing...';
         
-        // Submit form normally
-        this.submit();
     });
 });
 </script>
