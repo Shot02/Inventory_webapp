@@ -239,6 +239,10 @@ def view_receipt(request, sale_id):
     items = sale.items.all()
     payments = sale.payments.all()
     
+    # Calculate total item discounts
+    item_discounts_total = sum(item.discount for item in items)
+    total_discount = item_discounts_total + sale.discount
+    
     # Get payment method from latest payment
     payment_method = payments.last().payment_method if payments.exists() else 'cash'
     
@@ -246,7 +250,9 @@ def view_receipt(request, sale_id):
         'sale': sale,
         'items': items,
         'payments': payments,
-        'payment_method': payment_method
+        'payment_method': payment_method,
+        'item_discounts_total': item_discounts_total,
+        'total_discount': total_discount,  # Total of all discounts
     }
     return render(request, 'receipt.html', context)
 
