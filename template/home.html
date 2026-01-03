@@ -523,6 +523,7 @@ async function searchProducts(query) {
                     <div style="flex: 1;">
                         <strong>${p.name}</strong><br>
                         <small>Price: ₦${p.price} | ${getStockBadge(p.quantity)}</small>
+                        ${p.sku ? `<br><small style="color: #666;">SKU: ${p.sku}</small>` : ''}
                     </div>
                 </div>
             `;
@@ -533,6 +534,7 @@ async function searchProducts(query) {
         console.error('Search error:', error);
         showModal('Search Error', 'An error occurred while searching for products.', 'error');
     }
+}
 }
 
 // ========== CART FUNCTIONS ==========
