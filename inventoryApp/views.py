@@ -59,17 +59,19 @@ def home(request):
 
 @login_required
 def search_products(request):
-    """API endpoint for POS product search"""
-    query = request.GET.get('q', '')
+    """API endpoint for POS product search - FIXED"""
+    query = request.GET.get('q', '').strip()
     
     if query:
         products = Product.objects.filter(
             Q(name__icontains=query) |
             Q(sku__icontains=query) |
-            Q(category__name__icontains=query)
-        ).filter(quantity__gt=0)[:20]
+            Q(category__name__icontains=query) |
+            Q(description__icontains=query) |
+            Q(supplier__name__icontains=query)
+        ).order_by('name')[:20] 
     else:
-        products = Product.objects.filter(quantity__gt=0)[:20]
+        products = Product.objects.all().order_by('name')[:20]
     
     results = []
     for product in products:
