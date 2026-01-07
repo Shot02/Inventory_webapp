@@ -4,17 +4,102 @@
 
 {% block content %}
 <style>
+    /* Table Styles */
+    .staff-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+    }
+    
+    .staff-table th,
+    .staff-table td {
+        padding: 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .staff-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+        position: sticky;
+        top: 0;
+    }
+    
+    .staff-table tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    /* Badge Styles */
+    .status-badge {
+        padding: 0.3rem 0.8rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .status-active {
+        background: #d1fae5;
+        color: #065f46;
+    }
+    
+    .status-inactive {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+    
+    .role-badge {
+        padding: 0.3rem 0.8rem;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .role-admin {
+        background: #818cf8;
+        color: white;
+    }
+    
+    .role-staff {
+        background: #34d399;
+        color: white;
+    }
+    
+    .role-manager {
+        background: #f59e0b;
+        color: white;
+    }
+    
+    /* Action Buttons */
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .action-buttons .btn-sm {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    
+    /* Search Container */
     .search-container {
         background: #fff;
-        padding: 1rem;
+        padding: 1.5rem;
         border-radius: 10px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.08);
         margin-bottom: 1.5rem;
     }
-
+    
+    .search-input-group {
+        position: relative;
+    }
+    
     .search-input {
         width: 100%;
         padding: 0.75rem 1rem;
+        padding-right: 120px;
         border: 2px solid #ddd;
         border-radius: 8px;
         font-size: 1rem;
@@ -26,7 +111,7 @@
         outline: none;
         box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
     }
-
+    
     .search-result-count {
         position: absolute;
         right: 10px;
@@ -38,6 +123,7 @@
         border-radius: 12px;
         font-size: 0.85rem;
         font-weight: 600;
+        display: none;
     }
     
     .search-tips {
@@ -64,7 +150,7 @@
         align-items: center;
         backdrop-filter: blur(3px);
     }
-
+    
     .modal-content {
         background: white;
         padding: 2rem;
@@ -76,7 +162,7 @@
         box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         animation: modalFadeIn 0.3s ease-out;
     }
-
+    
     @keyframes modalFadeIn {
         from {
             opacity: 0;
@@ -88,6 +174,30 @@
         }
     }
     
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #666;
+        padding: 0.5rem;
+        line-height: 1;
+    }
+    
+    .modal-close:hover {
+        color: #333;
+    }
+    
+    /* Form Styles */
     .form-group {
         margin-bottom: 1rem;
     }
@@ -114,11 +224,34 @@
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
     
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+    
     .checkbox-label {
         display: flex;
         align-items: center;
         gap: 0.5rem;
         cursor: pointer;
+        margin-bottom: 0.5rem;
+    }
+    
+    .checkbox-label input[type="checkbox"] {
+        width: auto;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e0e0e0;
+    }
+    
+    .form-actions .btn {
+        flex: 1;
     }
     
     /* Toast Notification */
@@ -162,6 +295,19 @@
             opacity: 0;
         }
     }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
 </style>
 
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
@@ -171,26 +317,26 @@
 
 <!-- Search Bar -->
 <div class="search-container">
-    <div style="position: relative;">
+    <div class="search-input-group">
         <input type="text" 
                class="search-input"
                id="staffSearchInput"
-               placeholder="Type to search staff... (name, username, email, phone)"
+               placeholder="Type to search staff... (name, username, email, phone, role)"
                value="{{ search_query|default:'' }}"
                autofocus>
-        <div id="staffSearchCount" class="search-result-count" style="display: none;"></div>
+        <div id="staffSearchCount" class="search-result-count"></div>
     </div>
     
     <div class="search-tips">
         <small>
-            <strong>Search:</strong> Type username, name, email, phone, or role
+            <strong>Search Tips:</strong> Type username, name, email, phone, or role. Press Enter to search or Escape to clear.
         </small>
     </div>
 </div>
 
 <div class="card">
     <div style="overflow-x: auto;">
-        <table>
+        <table class="staff-table">
             <thead>
                 <tr>
                     <th>Username</th>
@@ -198,44 +344,72 @@
                     <th>Email</th>
                     <th>Phone</th>
                     <th>Role</th>
-                    <th>Date Joined</th>
                     <th>Status</th>
+                    <th>Date Joined</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="staffTableBody">
-                {% for user in staff %}
-                <tr data-user-id="{{ user.id }}" 
-                    data-username="{{ user.username }}"
-                    data-first-name="{{ user.first_name }}"
-                    data-last-name="{{ user.last_name }}"
-                    data-email="{{ user.email }}"
-                    data-phone="{{ user.phone }}"
-                    data-role="{{ user.role }}"
-                    data-is-active="{{ user.is_active }}">
-                    <td><strong>{{ user.username }}</strong></td>
-                    <td>{{ user.first_name }} {{ user.last_name }}</td>
-                    <td>{{ user.email }}</td>
-                    <td>{{ user.phone|default:"-" }}</td>
-                    <td><span class="badge" style="background:#e0e7ff; color:#3730a3;">{{ user.role }}</span></td>
-                    <td>{{ user.date_joined|date:"M d, Y" }}</td>
+                {% for staff_member in staff %}
+                <tr data-staff-id="{{ staff_member.id }}"
+                    data-username="{{ staff_member.username }}"
+                    data-first-name="{{ staff_member.first_name|default:'' }}"
+                    data-last-name="{{ staff_member.last_name|default:'' }}"
+                    data-email="{{ staff_member.email|default:'' }}"
+                    data-phone="{{ staff_member.phone|default:'' }}"
+                    data-role="{{ staff_member.role }}"
+                    data-is-active="{{ staff_member.is_active }}">
+                    <td><strong>{{ staff_member.username }}</strong></td>
                     <td>
-                        {% if user.is_active %}
-                        <span class="badge badge-success">Active</span>
+                        {% if staff_member.first_name or staff_member.last_name %}
+                            {{ staff_member.first_name }} {{ staff_member.last_name }}
                         {% else %}
-                        <span class="badge badge-danger">Inactive</span>
+                            -
                         {% endif %}
                     </td>
+                    <td>{{ staff_member.email|default:"-" }}</td>
+                    <td>{{ staff_member.phone|default:"-" }}</td>
                     <td>
-                        <button onclick="openEditModal({{ user.id }})" class="btn btn-primary btn-sm">
-                            Edit
-                        </button>
+                        <span class="role-badge role-{{ staff_member.role }}">
+                            {{ staff_member.role|title }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if staff_member.is_active %}
+                        <span class="status-badge status-active">Active</span>
+                        {% else %}
+                        <span class="status-badge status-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ staff_member.date_joined|date:"M d, Y" }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button onclick="openEditStaffModal({{ staff_member.id }})" 
+                                    class="btn btn-primary btn-sm"
+                                    title="Edit staff member">
+                                Edit
+                            </button>
+                            {% if staff_member != request.user %}
+                            <button onclick="confirmDeleteStaff({{ staff_member.id }}, '{{ staff_member.username|escapejs }}')" 
+                                    class="btn btn-danger btn-sm"
+                                    title="Delete staff member">
+                                Delete
+                            </button>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="8" style="text-align: center; padding: 2rem;">
-                        No staff members registered yet.
+                    <td colspan="8">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <h3>No Staff Members Found</h3>
+                            <p>Get started by adding your first staff member.</p>
+                            <a href="{% url 'register_staff' %}" class="btn btn-primary mt-2">
+                                Add Staff Member
+                            </a>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -247,69 +421,110 @@
 <!-- Edit Staff Modal -->
 <div id="editStaffModal" class="modal-overlay">
     <div class="modal-content">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h3 style="margin: 0;"> Edit Staff Member</h3>
-            <button onclick="closeEditModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">&times;</button>
+        <div class="modal-header">
+            <h3 style="margin: 0;">Edit Staff Member</h3>
+            <button onclick="closeEditStaffModal()" class="modal-close">&times;</button>
         </div>
         
         <form id="editStaffForm">
             {% csrf_token %}
-            <input type="hidden" id="editUserId" name="user_id">
+            <input type="hidden" id="editStaffId" name="user_id">
             
-            <div class="form-group">
-                <label for="editUsername">Username *</label>
-                <input type="text" id="editUsername" name="username" class="form-control" required>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+            <div class="form-grid">
                 <div class="form-group">
-                    <label for="editFirstName">First Name</label>
-                    <input type="text" id="editFirstName" name="first_name" class="form-control">
+                    <label for="editStaffUsername">Username *</label>
+                    <input type="text" id="editStaffUsername" name="username" class="form-control" required>
                 </div>
                 
                 <div class="form-group">
-                    <label for="editLastName">Last Name</label>
-                    <input type="text" id="editLastName" name="last_name" class="form-control">
+                    <label for="editStaffEmail">Email *</label>
+                    <input type="email" id="editStaffEmail" name="email" class="form-control" required>
+                </div>
+            </div>
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="editStaffFirstName">First Name</label>
+                    <input type="text" id="editStaffFirstName" name="first_name" class="form-control">
+                </div>
+                
+                <div class="form-group">
+                    <label for="editStaffLastName">Last Name</label>
+                    <input type="text" id="editStaffLastName" name="last_name" class="form-control">
                 </div>
             </div>
             
             <div class="form-group">
-                <label for="editEmail">Email *</label>
-                <input type="email" id="editEmail" name="email" class="form-control" required>
+                <label for="editStaffPhone">Phone</label>
+                <input type="tel" id="editStaffPhone" name="phone" class="form-control">
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+            <div class="form-grid">
                 <div class="form-group">
-                    <label for="editPhone">Phone</label>
-                    <input type="tel" id="editPhone" name="phone" class="form-control">
-                </div>
-                
-                <div class="form-group">
-                    <label for="editRole">Role *</label>
-                    <select id="editRole" name="role" class="form-control" required>
+                    <label for="editStaffRole">Role *</label>
+                    <select id="editStaffRole" name="role" class="form-control" required>
                         <option value="staff">Staff</option>
-                        <option value="admin">Admin</option>
                         <option value="manager">Manager</option>
+                        <option value="admin">Admin</option>
                     </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editStaffPassword">New Password</label>
+                    <input type="password" id="editStaffPassword" name="password" class="form-control" 
+                           placeholder="Leave blank to keep current">
+                    <small style="color: #666; font-size: 0.85rem;">
+                        Optional: Only enter if you want to change the password
+                    </small>
                 </div>
             </div>
             
             <div class="form-group">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="editIsActive" name="is_active" value="true">
-                    Active
+                    <input type="checkbox" id="editStaffIsActive" name="is_active" value="true">
+                    <span>Active Account</span>
                 </label>
+                <small style="display: block; margin-top: 0.25rem; color: #666; font-size: 0.85rem;">
+                    Uncheck to deactivate this account
+                </small>
             </div>
             
-            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                <button type="submit" class="btn btn-success" style="flex: 1;" id="editSubmitBtn">Save Changes</button>
-                <button type="button" onclick="closeEditModal()" class="btn btn-danger">Cancel</button>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-success" id="editStaffSubmitBtn">
+                    Save Changes
+                </button>
+                <button type="button" onclick="closeEditStaffModal()" class="btn btn-danger">Cancel</button>
             </div>
         </form>
     </div>
 </div>
 
+<!-- Delete Confirmation Modal -->
+<div id="deleteConfirmModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 style="margin: 0;">Confirm Delete</h3>
+            <button onclick="closeDeleteModal()" class="modal-close">&times;</button>
+        </div>
+        
+        <div id="deleteConfirmMessage" style="margin: 1.5rem 0;">
+            <!-- Message will be inserted here -->
+        </div>
+        
+        <div class="form-actions">
+            <button type="button" onclick="deleteStaffMember()" class="btn btn-danger" id="deleteConfirmBtn">
+                Delete
+            </button>
+            <button type="button" onclick="closeDeleteModal()" class="btn btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <script>
+// Global variables
+let currentStaffIdToDelete = null;
+let currentStaffNameToDelete = null;
+
 // Toast notification function
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
@@ -330,97 +545,106 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// Open edit modal with user data - NO ALERT
-function openEditModal(userId) {
+// Open edit staff modal
+function openEditStaffModal(staffId) {
     try {
-        const row = document.querySelector(`tr[data-user-id="${userId}"]`);
+        const row = document.querySelector(`tr[data-staff-id="${staffId}"]`);
         if (!row) {
-            showToast('User not found', 'error');
+            showToast('Staff member not found', 'error');
             return;
         }
         
-        const userData = {
-            id: row.dataset.userId,
+        const staffData = {
+            id: row.dataset.staffId,
             username: row.dataset.username,
-            firstName: row.dataset.firstName,
-            lastName: row.dataset.lastName,
+            firstName: row.dataset.firstName || '',
+            lastName: row.dataset.lastName || '',
             email: row.dataset.email,
             phone: row.dataset.phone || '',
             role: row.dataset.role,
             isActive: row.dataset.isActive === 'true'
         };
         
-        document.getElementById('editUserId').value = userData.id;
-        document.getElementById('editUsername').value = userData.username;
-        document.getElementById('editFirstName').value = userData.firstName;
-        document.getElementById('editLastName').value = userData.lastName;
-        document.getElementById('editEmail').value = userData.email;
-        document.getElementById('editPhone').value = userData.phone;
-        document.getElementById('editRole').value = userData.role;
-        document.getElementById('editIsActive').checked = userData.isActive;
+        // Populate form fields
+        document.getElementById('editStaffId').value = staffData.id;
+        document.getElementById('editStaffUsername').value = staffData.username;
+        document.getElementById('editStaffFirstName').value = staffData.firstName;
+        document.getElementById('editStaffLastName').value = staffData.lastName;
+        document.getElementById('editStaffEmail').value = staffData.email;
+        document.getElementById('editStaffPhone').value = staffData.phone;
+        document.getElementById('editStaffRole').value = staffData.role;
+        document.getElementById('editStaffIsActive').checked = staffData.isActive;
+        document.getElementById('editStaffPassword').value = '';
         
+        // Show modal
         document.getElementById('editStaffModal').style.display = 'flex';
-        document.getElementById('editUsername').focus();
+        document.getElementById('editStaffUsername').focus();
         
     } catch (error) {
         console.error('Error opening edit modal:', error);
-        showToast('Error loading user data', 'error');
+        showToast('Error loading staff data', 'error');
     }
 }
 
-// Close edit modal
-function closeEditModal() {
+// Close edit staff modal
+function closeEditStaffModal() {
     document.getElementById('editStaffModal').style.display = 'none';
     document.getElementById('editStaffForm').reset();
     
-    // Reset border colors
-    document.querySelectorAll('#editStaffForm .form-control').forEach(input => {
-        input.style.borderColor = '#e0e0e0';
-    });
+    // Reset submit button
+    const submitBtn = document.getElementById('editStaffSubmitBtn');
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'Save Changes';
+    submitBtn.style.background = '';
 }
 
-// Handle edit form submission - NO CONFIRMATION POPUP
+// Handle edit staff form submission
 document.getElementById('editStaffForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    const submitBtn = document.getElementById('editSubmitBtn');
+    const submitBtn = document.getElementById('editStaffSubmitBtn');
     const formData = new FormData(this);
     
-    // Basic validation with visual feedback
-    const username = document.getElementById('editUsername').value.trim();
-    const email = document.getElementById('editEmail').value.trim();
-    const role = document.getElementById('editRole').value;
+    // Ensure is_active is properly set
+    const isActiveCheckbox = document.getElementById('editStaffIsActive');
+    if (!isActiveCheckbox.checked) {
+        formData.set('is_active', 'false');
+    }
+    
+    // Basic validation
+    const username = document.getElementById('editStaffUsername').value.trim();
+    const email = document.getElementById('editStaffEmail').value.trim();
+    const role = document.getElementById('editStaffRole').value;
     
     // Reset border colors
     document.querySelectorAll('#editStaffForm .form-control').forEach(input => {
         input.style.borderColor = '#e0e0e0';
     });
     
-    // Validation
     let isValid = true;
     
     if (!username) {
-        document.getElementById('editUsername').focus();
-        document.getElementById('editUsername').style.borderColor = '#f56565';
+        document.getElementById('editStaffUsername').focus();
+        document.getElementById('editStaffUsername').style.borderColor = '#f56565';
         isValid = false;
     }
     
     if (!email) {
-        if (isValid) document.getElementById('editEmail').focus();
-        document.getElementById('editEmail').style.borderColor = '#f56565';
+        if (isValid) document.getElementById('editStaffEmail').focus();
+        document.getElementById('editStaffEmail').style.borderColor = '#f56565';
         isValid = false;
     } else {
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            if (isValid) document.getElementById('editEmail').focus();
-            document.getElementById('editEmail').style.borderColor = '#f56565';
+            if (isValid) document.getElementById('editStaffEmail').focus();
+            document.getElementById('editStaffEmail').style.borderColor = '#f56565';
             isValid = false;
         }
     }
     
     if (!role) {
-        document.getElementById('editRole').style.borderColor = '#f56565';
+        document.getElementById('editStaffRole').style.borderColor = '#f56565';
         isValid = false;
     }
     
@@ -433,12 +657,12 @@ document.getElementById('editStaffForm').addEventListener('submit', async functi
         submitBtn.disabled = true;
         submitBtn.innerHTML = 'Saving...';
         
-        const response = await fetch('{% url "edit_staff" %}', {
+        const response = await fetch('/staff/edit/', {
             method: 'POST',
             body: formData,
             headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': getCookie('csrftoken')
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
             }
         });
         
@@ -451,7 +675,7 @@ document.getElementById('editStaffForm').addEventListener('submit', async functi
             showToast('Staff member updated successfully!', 'success');
             
             setTimeout(() => {
-                closeEditModal();
+                closeEditStaffModal();
                 location.reload();
             }, 1500);
             
@@ -469,21 +693,101 @@ document.getElementById('editStaffForm').addEventListener('submit', async functi
     }
 });
 
-// Close modal when clicking outside
-document.getElementById('editStaffModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeEditModal();
-    }
-});
+// Delete staff confirmation
+function confirmDeleteStaff(staffId, username) {
+    currentStaffIdToDelete = staffId;
+    currentStaffNameToDelete = username;
+    
+    const message = `
+        <p>Are you sure you want to delete staff member <strong>"${username}"</strong>?</p>
+        <p style="color: #f56565; margin-top: 1rem;">
+            <strong>Warning:</strong> This action cannot be undone. All data associated with this staff member will be permanently deleted.
+        </p>
+    `;
+    
+    document.getElementById('deleteConfirmMessage').innerHTML = message;
+    document.getElementById('deleteConfirmModal').style.display = 'flex';
+}
 
-// Close modal with Escape key
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && document.getElementById('editStaffModal').style.display === 'flex') {
-        closeEditModal();
-    }
-});
+// Close delete modal
+function closeDeleteModal() {
+    document.getElementById('deleteConfirmModal').style.display = 'none';
+    currentStaffIdToDelete = null;
+    currentStaffNameToDelete = null;
+}
 
-// Real-time search for staff - NO ALERTS
+// Delete staff member
+async function deleteStaffMember() {
+    if (!currentStaffIdToDelete) return;
+    
+    const deleteBtn = document.getElementById('deleteConfirmBtn');
+    const staffId = currentStaffIdToDelete;
+    
+    try {
+        deleteBtn.disabled = true;
+        deleteBtn.innerHTML = 'Deleting...';
+        
+        const response = await fetch(`/staff/delete/${staffId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('Staff member deleted successfully!', 'success');
+            closeDeleteModal();
+            
+            // Remove the row from the table
+            const row = document.querySelector(`tr[data-staff-id="${staffId}"]`);
+            if (row) {
+                row.style.opacity = '0.5';
+                row.style.transition = 'opacity 0.3s';
+                setTimeout(() => {
+                    row.remove();
+                    
+                    // Check if table is empty
+                    const tableBody = document.getElementById('staffTableBody');
+                    if (tableBody.children.length === 0) {
+                        tableBody.innerHTML = `
+                            <tr>
+                                <td colspan="8">
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon">👥</div>
+                                        <h3>No Staff Members Found</h3>
+                                        <p>Get started by adding your first staff member.</p>
+                                        <a href="{% url 'register_staff' %}" class="btn btn-primary mt-2">
+                                            Add Staff Member
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                }, 300);
+            } else {
+                // If row not found, reload the page
+                setTimeout(() => location.reload(), 500);
+            }
+            
+        } else {
+            showToast(result.error || 'Failed to delete staff member', 'error');
+            deleteBtn.disabled = false;
+            deleteBtn.innerHTML = 'Delete';
+        }
+        
+    } catch (error) {
+        console.error('Delete error:', error);
+        showToast('Network error. Please try again.', 'error');
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = 'Delete';
+    }
+}
+
+// Real-time search for staff
 let staffDebounceTimer;
 
 function debounceStaffSearch() {
@@ -493,96 +797,78 @@ function debounceStaffSearch() {
     }, 300);
 }
 
-async function performStaffSearch() {
+function performStaffSearch() {
     const searchTerm = document.getElementById('staffSearchInput').value.trim();
     const searchCount = document.getElementById('staffSearchCount');
     
-    if (searchTerm === '') {
-        window.location.href = "{% url 'staff_list' %}";
+    if (!searchTerm) {
+        searchCount.style.display = 'none';
+        
+        // Show all rows
+        const rows = document.querySelectorAll('#staffTableBody tr');
+        rows.forEach(row => row.style.display = '');
+        
         return;
     }
     
-    try {
-        const searchUrl = `/api/search/staff/?q=${encodeURIComponent(searchTerm)}`;
-        const response = await fetch(searchUrl);
-        const data = await response.json();
+    const searchLower = searchTerm.toLowerCase();
+    const rows = document.querySelectorAll('#staffTableBody tr[data-staff-id]');
+    let foundCount = 0;
+    
+    rows.forEach(row => {
+        const username = (row.dataset.username || '').toLowerCase();
+        const firstName = (row.dataset.firstName || '').toLowerCase();
+        const lastName = (row.dataset.lastName || '').toLowerCase();
+        const email = (row.dataset.email || '').toLowerCase();
+        const phone = (row.dataset.phone || '').toLowerCase();
+        const role = (row.dataset.role || '').toLowerCase();
         
-        if (data.success) {
-            updateStaffTable(data.results);
-            updateStaffSearchCount(data.count);
+        const fullName = `${firstName} ${lastName}`.toLowerCase();
+        
+        if (username.includes(searchLower) || 
+            fullName.includes(searchLower) || 
+            email.includes(searchLower) || 
+            phone.includes(searchLower) ||
+            role.includes(searchLower)) {
+            row.style.display = '';
+            foundCount++;
+        } else {
+            row.style.display = 'none';
         }
-    } catch (error) {
-        console.error('Search error:', error);
-    }
-}
-
-function updateStaffTable(results) {
-    const tableBody = document.getElementById('staffTableBody');
-    
-    if (results.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8" style="text-align: center; padding: 2rem;">
-                    No staff members found
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    let rowsHtml = '';
-    results.forEach(user => {
-        const statusBadge = user.is_active ? 
-            '<span class="badge badge-success">Active</span>' : 
-            '<span class="badge badge-danger">Inactive</span>';
-        
-        const roleBadge = `<span class="badge" style="background:#e0e7ff; color:#3730a3;">${user.role}</span>`;
-        
-        const date = new Date(user.date_joined);
-        const formattedDate = date.toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric'
-        });
-        
-        rowsHtml += `
-            <tr data-user-id="${user.id}" 
-                data-username="${user.username}"
-                data-first-name="${user.first_name || ''}"
-                data-last-name="${user.last_name || ''}"
-                data-email="${user.email}"
-                data-phone="${user.phone || ''}"
-                data-role="${user.role}"
-                data-is-active="${user.is_active}">
-                <td><strong>${user.username}</strong></td>
-                <td>${user.first_name} ${user.last_name}</td>
-                <td>${user.email}</td>
-                <td>${user.phone || '-'}</td>
-                <td>${roleBadge}</td>
-                <td>${formattedDate}</td>
-                <td>${statusBadge}</td>
-                <td>
-                    <button onclick="openEditModal(${user.id})" class="btn btn-primary btn-sm">
-                        Edit
-                    </button>
-                </td>
-            </tr>
-        `;
     });
     
-    tableBody.innerHTML = rowsHtml;
-}
-
-function updateStaffSearchCount(count) {
-    const searchCount = document.getElementById('staffSearchCount');
-    
-    if (count > 0) {
-        searchCount.innerHTML = `<small>${count} found</small>`;
+    // Update search count
+    if (foundCount > 0) {
+        searchCount.textContent = `${foundCount} found`;
         searchCount.style.display = 'block';
     } else {
         searchCount.style.display = 'none';
     }
 }
+
+// Close modals when clicking outside
+document.getElementById('editStaffModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEditStaffModal();
+    }
+});
+
+document.getElementById('deleteConfirmModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeDeleteModal();
+    }
+});
+
+// Close modals with Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if (document.getElementById('editStaffModal').style.display === 'flex') {
+            closeEditStaffModal();
+        } else if (document.getElementById('deleteConfirmModal').style.display === 'flex') {
+            closeDeleteModal();
+        }
+    }
+});
 
 // CSRF token helper function
 function getCookie(name) {
@@ -615,17 +901,19 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (e.key === 'Enter') {
                 e.preventDefault();
-                debounceStaffSearch();
+                performStaffSearch();
             }
         });
         
+        // Focus search input
         searchInput.focus();
         
+        // Check for search query in URL
         const urlParams = new URLSearchParams(window.location.search);
         const searchParam = urlParams.get('search');
         if (searchParam) {
             searchInput.value = searchParam;
-            setTimeout(() => debounceStaffSearch(), 100);
+            setTimeout(() => performStaffSearch(), 100);
         }
     }
 });

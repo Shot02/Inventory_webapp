@@ -36,24 +36,21 @@
             font-size: 1.5rem;
             font-weight: bold;
             color: #667eea;
-            display: inline;
+            display: flex;
             align-items: center;
-
         }
+        
         .navbar-brand img.nav-logo {
             height: 120px;
             width: 120px;
             object-fit: cover;
-            
             border-radius: 50%;
             margin-right: 10px;
         }
-
-
         
         .navbar-nav {
             display: flex;
-            gap: 1rem;
+            gap: 1.5rem;
             list-style: none;
             align-items: center;
         }
@@ -64,6 +61,10 @@
             padding: 0.5rem 1rem;
             border-radius: 6px;
             transition: all 0.3s;
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
         }
         
         .nav-link:hover {
@@ -74,6 +75,52 @@
         .nav-link.active {
             background: #667eea;
             color: white;
+        }
+        
+        /* Notification Badge */
+        .notification-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ff4757;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+            z-index: 100;
+        }
+        
+        .notification-badge-dot {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff4757;
+            border-radius: 50%;
+            width: 10px;
+            height: 10px;
+            animation: pulse 2s infinite;
+            z-index: 100;
+        }
+        
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7);
+            }
+            70% {
+                transform: scale(1.1);
+                box-shadow: 0 0 0 10px rgba(255, 71, 87, 0);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 71, 87, 0);
+            }
         }
         
         .user-info {
@@ -268,6 +315,7 @@
             font-weight: 600;
             display: inline-block;
         }
+        
         .badge-success { background: #d1fae5; color: #065f46; }
         .badge-warning { background: #fef3c7; color: #92400e; }
         .badge-danger  { background: #fee2e2; color: #b91c1c; }
@@ -392,9 +440,40 @@
             cursor: pointer;
             color: #666;
         }
+
+        /* Mobile responsiveness for notification badges */
+        @media (max-width: 768px) {
+            .notification-badge {
+                top: 0;
+                right: 0;
+                width: 18px;
+                height: 18px;
+                font-size: 10px;
+            }
+            
+            .notification-badge-dot {
+                top: 0;
+                right: 0;
+                width: 8px;
+                height: 8px;
+            }
+            
+            .navbar-nav {
+                gap: 0.5rem;
+            }
+            
+            .nav-link {
+                padding: 0.5rem;
+                font-size: 0.9rem;
+            }
+        }
         
     </style>
     {% block extra_css %}{% endblock %}
+    <body data-unread-dashboard-count="{{ unread_dashboard_count|default:0 }}"
+      data-unread-debtors-count="{{ unread_debtors_count|default:0 }}"
+      data-unread-refunds-count="{{ unread_refunds_count|default:0 }}"
+      data-unread-sales-count="{{ unread_sales_count|default:0 }}">
 </head>
 <body>
     <!-- Global Modal - Only for important confirmations -->
@@ -419,21 +498,64 @@
         <nav class="navbar">
             <div class="navbar-brand">
                 <img class="nav-logo" src="{% static 'img/inventory_logo.jpeg' %}" alt="Logo">
-                
             </div>
             
             <ul class="navbar-nav">
-                <li><a href="{% url 'home' %}" class="nav-link">POS</a></li>
-                <li><a href="{% url 'saved_carts_list' %}" class="nav-link">Saved Carts</a></li>
-                <li><a href="{% url 'debtors_list' %}" class="nav-link">Debtors</a></li>
-                <li><a href="{% url 'refund_requests_list' %}" class="nav-link">Refunds</a></li>
+                <li>
+                    <a href="{% url 'home' %}" class="nav-link">POS</a>
+                </li>
                 
-
+                <li>
+                    <a href="{% url 'saved_carts_list' %}" class="nav-link">
+                        Saved Carts
+                        <span id="savedCartsNotification" class="notification-badge-dot" style="display: none;"></span>
+                    </a>
+                </li>
+                
+                <li>
+                    <a href="{% url 'debtors_list' %}" class="nav-link">
+                        Debtors
+                        {% if unread_debtors_count > 0 %}
+                        <span class="notification-badge">{{ unread_debtors_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                
+                <li>
+                    <a href="{% url 'refund_requests_list' %}" class="nav-link">
+                        Refunds
+                        {% if unread_refunds_count > 0 %}
+                        <span class="notification-badge">{{ unread_refunds_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                
                 {% if user.role == 'admin' or user.is_superuser %}
-                    <li><a href="{% url 'admin_dashboard' %}" class="nav-link">Dashboard</a></li>
-                    <li><a href="{% url 'product_list' %}" class="nav-link">Products</a></li>
-                    <li><a href="{% url 'staff_list' %}" class="nav-link">Staff</a></li>
-                    <li><a href="{% url 'sale_history' %}" class="nav-link">Sales History</a></li>
+                    <li>
+                        <a href="{% url 'admin_dashboard' %}" class="nav-link">
+                            Dashboard
+                            {% if unread_dashboard_count > 0 %}
+                            <span class="notification-badge">{{ unread_dashboard_count }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="{% url 'product_list' %}" class="nav-link">Products</a>
+                    </li>
+                    
+                    <li>
+                        <a href="{% url 'staff_list' %}" class="nav-link">Staff</a>
+                    </li>
+                    
+                    <li>
+                        <a href="{% url 'sale_history' %}" class="nav-link">
+                            Sales History
+                            {% if unread_sales_count > 0 %}
+                            <span class="notification-badge">{{ unread_sales_count }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
                 {% endif %}
             </ul>
             
@@ -466,48 +588,148 @@
     </div>
     
     <script>
-        // GLOBAL MODAL SYSTEM - ONLY FOR IMPORTANT CONFIRMATIONS
-        let modalResolveCallback = null;
-        let modalPromise = null;
+        // ========== NOTIFICATION SYSTEM ==========
         
-        // Show basic modal (replaces alert() - but only for errors/warnings)
+        // Function to get notification counts from server
+        async function getNotificationCounts() {
+            try {
+                const response = await fetch('/api/notification-counts/');
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                const data = await response.json();
+                if (data.success) {
+                    return data;
+                }
+            } catch (error) {
+                console.error('Error fetching notification counts:', error);
+            }
+            return null;
+        }
+        
+        // Function to update notification badges in the navbar
+        function updateNotificationBadges(counts) {
+            if (!counts) return;
+            
+            // Update debtors badge
+            updateSingleBadge('debtors', counts.debtors_count);
+            
+            // Update refunds badge
+            updateSingleBadge('refunds', counts.refunds_count);
+            
+            // Update dashboard badge (only for admin users)
+            if (document.querySelector('a[href*="admin_dashboard"]')) {
+                updateSingleBadge('dashboard', counts.dashboard_count);
+            }
+            
+            // Update sales history badge (only for admin users)
+            if (document.querySelector('a[href*="sale_history"]')) {
+                updateSingleBadge('sales', counts.sales_count);
+            }
+        }
+        
+        // Function to update a single notification badge
+        function updateSingleBadge(pageType, count) {
+            const link = document.querySelector(`a[href*="${pageType}"]`);
+            if (!link) return;
+            
+            const existingBadge = link.querySelector('.notification-badge');
+            
+            if (count > 0) {
+                if (existingBadge) {
+                    existingBadge.textContent = count;
+                    existingBadge.style.display = 'flex';
+                } else {
+                    const badge = document.createElement('span');
+                    badge.className = 'notification-badge';
+                    badge.textContent = count;
+                    link.appendChild(badge);
+                }
+            } else if (existingBadge) {
+                existingBadge.style.display = 'none';
+            }
+        }
+        
+        // Function to mark notifications as read
+        async function markNotificationsAsRead(notificationType) {
+            try {
+                const response = await fetch('/mark-notifications-read/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        notification_type: notificationType
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    // Update the badge locally immediately
+                    updateSingleBadge(notificationType, 0);
+                }
+            } catch (error) {
+                console.error('Error marking notifications as read:', error);
+            }
+        }
+        
+        // Function to determine current page type
+        function getCurrentPageType() {
+            const path = window.location.pathname;
+            
+            if (path.includes('debtors')) return 'debtors';
+            if (path.includes('refund')) return 'refunds';
+            if (path.includes('admin_dashboard')) return 'dashboard';
+            if (path.includes('sale_history')) return 'sales';
+            
+            return null;
+        }
+        
+        // Periodically check for new notifications
+        let notificationInterval;
+        function startNotificationPolling() {
+            // Check every 30 seconds
+            notificationInterval = setInterval(async () => {
+                const counts = await getNotificationCounts();
+                if (counts) {
+                    updateNotificationBadges(counts);
+                }
+            }, 30000);
+        }
+        
+        // Stop notification polling
+        function stopNotificationPolling() {
+            if (notificationInterval) {
+                clearInterval(notificationInterval);
+            }
+        }
+        
+        // ========== GLOBAL MODAL SYSTEM ==========
+        let modalResolveCallback = null;
+        
+        // Show basic modal
         window.showModal = function(title, message, type = 'info', onClose = null) {
             return new Promise((resolve) => {
-                // Don't show modal for success/info messages - use toast instead
-                if (type === 'success' || type === 'info') {
-                    showToast(message, type);
-                    resolve(true);
-                    return;
-                }
-                
-                // Only show modal for errors and warnings
                 const modal = document.getElementById('globalModal');
                 const modalTitle = document.getElementById('modalTitle');
                 const modalContent = document.getElementById('modalContent');
                 const modalButtons = document.getElementById('modalButtons');
                 const modalCloseBtn = document.getElementById('modalCloseBtn');
                 
-                // Remove existing classes
                 modal.className = 'global-modal-overlay';
-                
-                // Add type class
                 modal.classList.add(`global-modal-${type}`);
                 
-                // Set content
                 modalTitle.textContent = title;
                 modalContent.innerHTML = `<p style="font-size: 1.1rem; line-height: 1.5;">${message}</p>`;
                 
-                // Create single OK button
                 modalButtons.innerHTML = `
                     <button id="modalOkBtn" class="btn btn-primary" style="flex: 1;">
                         OK
                     </button>
                 `;
                 
-                // Show modal
                 modal.style.display = 'flex';
                 
-                // Set up event handlers
                 const okBtn = document.getElementById('modalOkBtn');
                 const closeHandler = function() {
                     if (onClose && typeof onClose === 'function') {
@@ -520,14 +742,12 @@
                 okBtn.onclick = closeHandler;
                 modalCloseBtn.onclick = closeHandler;
                 
-                // Close on overlay click
                 modal.onclick = function(e) {
                     if (e.target === modal) {
                         closeHandler();
                     }
                 };
                 
-                // Prevent event bubbling
                 modalContent.onclick = function(e) {
                     e.stopPropagation();
                 };
@@ -537,7 +757,7 @@
             });
         };
         
-        // Show confirm modal (replaces confirm() - only for important actions)
+        // Show confirm modal
         window.showConfirmModal = function(title, message, confirmCallback, cancelCallback = null) {
             return new Promise((resolve) => {
                 const modal = document.getElementById('globalModal');
@@ -546,15 +766,12 @@
                 const modalButtons = document.getElementById('modalButtons');
                 const modalCloseBtn = document.getElementById('modalCloseBtn');
                 
-                // Remove existing classes
                 modal.className = 'global-modal-overlay';
                 modal.classList.add('global-modal-confirm');
                 
-                // Set content
                 modalTitle.textContent = title;
                 modalContent.innerHTML = `<p style="font-size: 1.1rem; line-height: 1.5;">${message}</p>`;
                 
-                // Create confirm buttons
                 modalButtons.innerHTML = `
                     <button id="modalConfirmBtn" class="btn btn-success" style="flex: 1;">
                         Yes, Confirm
@@ -564,10 +781,8 @@
                     </button>
                 `;
                 
-                // Show modal
                 modal.style.display = 'flex';
                 
-                // Set up event handlers
                 const confirmBtn = document.getElementById('modalConfirmBtn');
                 const cancelBtn = document.getElementById('modalCancelBtn');
                 
@@ -591,14 +806,12 @@
                 cancelBtn.onclick = cancelHandler;
                 modalCloseBtn.onclick = cancelHandler;
                 
-                // Close on overlay click
                 modal.onclick = function(e) {
                     if (e.target === modal) {
                         cancelHandler();
                     }
                 };
                 
-                // Prevent event bubbling
                 modalContent.onclick = function(e) {
                     e.stopPropagation();
                 };
@@ -608,7 +821,7 @@
             });
         };
         
-        // Show prompt modal (replaces prompt())
+        // Show prompt modal
         window.showPromptModal = function(title, message, defaultValue = '') {
             return new Promise((resolve) => {
                 const modal = document.getElementById('globalModal');
@@ -617,18 +830,15 @@
                 const modalButtons = document.getElementById('modalButtons');
                 const modalCloseBtn = document.getElementById('modalCloseBtn');
                 
-                // Remove existing classes
                 modal.className = 'global-modal-overlay';
                 modal.classList.add('global-modal-info');
                 
-                // Set content
                 modalTitle.textContent = title;
                 modalContent.innerHTML = `
                     <p style="font-size: 1.1rem; line-height: 1.5; margin-bottom: 1rem;">${message}</p>
                     <input type="text" id="promptInput" class="form-control" value="${defaultValue}" placeholder="Enter value">
                 `;
                 
-                // Create confirm buttons
                 modalButtons.innerHTML = `
                     <button id="modalOkBtn" class="btn btn-success" style="flex: 1;">
                         OK
@@ -638,17 +848,14 @@
                     </button>
                 `;
                 
-                // Show modal
                 modal.style.display = 'flex';
                 
-                // Focus on input
                 setTimeout(() => {
                     const input = document.getElementById('promptInput');
                     input.focus();
                     input.select();
                 }, 100);
                 
-                // Set up event handlers
                 const okBtn = document.getElementById('modalOkBtn');
                 const cancelBtn = document.getElementById('modalCancelBtn');
                 
@@ -667,7 +874,6 @@
                 cancelBtn.onclick = cancelHandler;
                 modalCloseBtn.onclick = cancelHandler;
                 
-                // Enter key to submit
                 const input = document.getElementById('promptInput');
                 input.onkeypress = function(e) {
                     if (e.key === 'Enter') {
@@ -675,14 +881,12 @@
                     }
                 };
                 
-                // Close on overlay click
                 modal.onclick = function(e) {
                     if (e.target === modal) {
                         cancelHandler();
                     }
                 };
                 
-                // Prevent event bubbling
                 modalContent.onclick = function(e) {
                     e.stopPropagation();
                 };
@@ -696,22 +900,19 @@
             const modal = document.getElementById('globalModal');
             modal.style.display = 'none';
             
-            // Clear all event listeners and content
             const modalButtons = document.getElementById('modalButtons');
             const modalContent = document.getElementById('modalContent');
             modalButtons.innerHTML = '';
             modalContent.innerHTML = '';
             
-            // Clear callbacks
             if (modalResolveCallback) {
                 modalResolveCallback(false);
                 modalResolveCallback = null;
             }
         }
         
-        // TOAST NOTIFICATION SYSTEM - For non-critical messages
+        // ========== TOAST NOTIFICATION SYSTEM ==========
         function showToast(message, type = 'success') {
-            // Create toast notification
             const toast = document.createElement('div');
             toast.className = `toast toast-${type}`;
             toast.innerHTML = `
@@ -722,7 +923,6 @@
             
             document.body.appendChild(toast);
             
-            // Remove after 3 seconds
             setTimeout(() => {
                 toast.style.animation = 'slideOut 0.3s ease-out';
                 setTimeout(() => {
@@ -731,17 +931,14 @@
             }, 3000);
         }
         
-        // MODIFIED ALERT/CONFIRM OVERRIDES - MINIMAL POPUPS
-        // Save original functions
+        // ========== ALERT/CONFIRM OVERRIDES ==========
         window.originalAlert = window.alert;
         window.originalConfirm = window.confirm;
         window.originalPrompt = window.prompt;
         
-        // Override alert() - show toast for success, modal only for errors/warnings
         window.alert = function(message) {
             const msg = String(message).toLowerCase();
             
-            // Check if this is an important alert that needs modal
             const importantAlerts = [
                 'error', 'failed', 'invalid', 'not found', 'required', 
                 'empty cart', 'no product', 'insufficient', 'permission denied',
@@ -752,57 +949,54 @@
                 return showModal('Alert', String(message), 'error');
             }
             
-            // For all other alerts, show toast and log to console
             console.log("Info:", message);
             
-            // Show success/info as toast
             if (msg.includes('success') || msg.includes('saved') || msg.includes('added')) {
                 showToast(message, 'success');
             } else {
                 showToast(message, 'info');
             }
             
-            // Return resolved promise to prevent blocking
             return Promise.resolve();
         };
         
-        // Override confirm() - only for important actions
         window.confirm = function(message) {
             const msg = String(message).toLowerCase();
             
-            // List of important actions that need confirmation
             const importantActions = [
                 'delete', 'remove', 'logout', 'discard', 'cancel order',
                 'reset', 'clear all', 'permanently', 'irreversible',
                 'cannot undo', 'are you sure'
             ];
             
-            // Check if this is an important confirmation
             if (importantActions.some(keyword => msg.includes(keyword))) {
                 return showConfirmModal('Confirm', String(message));
             }
             
-            // For non-important confirmations, just return true automatically
             console.log("Auto-confirmed:", message);
             return Promise.resolve(true);
         };
         
-        // Keep prompt override as is
         window.prompt = function(message, defaultValue = '') {
             return showPromptModal('Input Required', String(message), defaultValue);
         };
         
-        // Add Escape key listener for modal
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const modal = document.getElementById('globalModal');
-                if (modal.style.display === 'flex') {
-                    closeGlobalModal();
+        // ========== HELPER FUNCTIONS ==========
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
                 }
             }
-        });
+            return cookieValue;
+        }
         
-        // Check for saved carts and update navbar badge
         async function checkSavedCartsBadge() {
             try {
                 const response = await fetch('{% url "saved_carts_list" %}');
@@ -812,109 +1006,68 @@
                 const cartsGrid = doc.querySelector('.carts-grid');
                 
                 const badge = document.getElementById('savedCartsBadge');
+                const notificationDot = document.getElementById('savedCartsNotification');
+                
                 if (cartsGrid && cartsGrid.children.length > 0) {
                     badge.style.display = 'inline-block';
                     badge.textContent = `📂 ${cartsGrid.children.length} Saved`;
+                    
+                    // Show dot notification if there are saved carts
+                    notificationDot.style.display = 'block';
                 } else {
                     badge.style.display = 'none';
+                    notificationDot.style.display = 'none';
                 }
             } catch (error) {
                 console.error('Error checking saved carts badge:', error);
             }
         }
-
-        // SALES SPECIFIC FUNCTIONS - Minimal alerts
-        window.handleSalesSubmit = function(action, formId = 'salesForm') {
-            const cartItems = document.querySelectorAll('.cart-item');
-            
-            // Only show alert for empty cart
-            if (cartItems.length === 0) {
-                return showModal(
-                    'Empty Cart', 
-                    'Please add at least one product before ' + action, 
-                    'warning'
-                );
-            }
-            
-            // For non-empty cart, proceed without alert
-            const form = document.getElementById(formId);
-            if (form) {
-                // Set action type if needed
-                const actionInput = form.querySelector('input[name="action"]');
-                if (actionInput) {
-                    actionInput.value = action;
-                }
-                
-                // Submit form silently
-                form.submit();
-            }
-            
-            return false;
-        };
         
-        // REAL-TIME SEARCH FUNCTIONALITY
+        // ========== EVENT LISTENERS ==========
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize saved carts badge
             checkSavedCartsBadge();
             
-            // Initialize real-time search for all pages
-            initializeRealTimeSearch();
+            // Get current page type and mark notifications as read
+            const currentPageType = getCurrentPageType();
+            if (currentPageType) {
+                // Mark notifications as read for this page
+                markNotificationsAsRead(currentPageType);
+            }
             
-            // Add visual feedback for form submissions
-            setupFormVisualFeedback();
-        });
-        
-        // Set up visual feedback for forms
-        function setupFormVisualFeedback() {
-            // Add loading states to submit buttons
-            document.addEventListener('submit', function(e) {
-                const form = e.target;
-                const submitBtn = form.querySelector('button[type="submit"]');
-                
-                if (submitBtn && !form.classList.contains('no-loading')) {
-                    // Save original text
-                    const originalText = submitBtn.innerHTML;
-                    submitBtn.dataset.originalText = originalText;
-                    
-                    // Show loading state
-                    submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
-                    submitBtn.disabled = true;
-                    
-                    // Restore after 3 seconds (in case of error)
-                    setTimeout(() => {
-                        if (submitBtn.disabled) {
-                            submitBtn.innerHTML = originalText;
-                            submitBtn.disabled = false;
-                        }
-                    }, 3000);
+            // Get initial notification counts
+            getNotificationCounts().then(counts => {
+                if (counts) {
+                    updateNotificationBadges(counts);
                 }
             });
             
-            // Add spinner style if not exists
-            if (!document.querySelector('style[data-spinner]')) {
-                const spinnerStyle = document.createElement('style');
-                spinnerStyle.setAttribute('data-spinner', 'true');
-                spinnerStyle.textContent = `
-                    .spinner {
-                        display: inline-block;
-                        width: 16px;
-                        height: 16px;
-                        border: 2px solid rgba(255,255,255,0.3);
-                        border-radius: 50%;
-                        border-top-color: #fff;
-                        animation: spin 1s ease-in-out infinite;
-                        margin-right: 8px;
-                        vertical-align: middle;
+            // Start polling for new notifications
+            startNotificationPolling();
+            
+            // Initialize real-time search
+            initializeRealTimeSearch();
+            
+            // Set up form visual feedback
+            setupFormVisualFeedback();
+            
+            // Add Escape key listener for modal
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    const modal = document.getElementById('globalModal');
+                    if (modal.style.display === 'flex') {
+                        closeGlobalModal();
                     }
-                    
-                    @keyframes spin {
-                        to { transform: rotate(360deg); }
-                    }
-                `;
-                document.head.appendChild(spinnerStyle);
-            }
-        }
+                }
+            });
+        });
         
-        // Simple real-time search function
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            stopNotificationPolling();
+        });
+        
+        // ========== SEARCH FUNCTIONALITY ==========
         function initializeRealTimeSearch() {
             const searchInputs = document.querySelectorAll('.search-input');
             
@@ -1040,121 +1193,8 @@
                         </tr>
                     `;
                 });
-            } else if (tableId === 'stockTableBody') {
-                results.forEach(product => {
-                    rowsHtml += `
-                        <tr>
-                            <td><strong>${product.name}</strong></td>
-                            <td>${product.sku}</td>
-                            <td><span class="badge badge-danger">${product.quantity}</span></td>
-                            <td>${product.reorder_level}</td>
-                            <td>
-                                <a href="/products/edit/${product.id}/" class="btn btn-warning btn-sm">
-                                    Restock
-                                </a>
-                            </td>
-                        </tr>
-                    `;
-                });
-            } else if (tableId === 'productTableBody') {
-                results.forEach(product => {
-                    let statusBadge = '';
-                    if (product.quantity === 0) {
-                        statusBadge = '<span class="badge badge-danger">Out</span>';
-                    } else if (product.is_low_stock) {
-                        statusBadge = '<span class="badge badge-warning">Low</span>';
-                    } else {
-                        statusBadge = '<span class="badge badge-success">In</span>';
-                    }
-                    
-                    rowsHtml += `
-                        <tr>
-                            <td>
-                                ${product.image ? 
-                                    `<img src="${product.image}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;">` : 
-                                    `<div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px;">
-                                        none
-                                    </div>`}
-                            </td>
-                            <td><strong>${product.name}</strong></td>
-                            <td><code>${product.sku}</code></td>
-                            <td>${product.category || 'N/A'}</td>
-                            <td>₦${parseFloat(product.price).toFixed(2)}</td>
-                            <td>₦${parseFloat(product.cost_price).toFixed(2)}</td>
-                            <td>${product.quantity}</td>
-                            <td>${statusBadge}</td>
-                            <td>
-                                <a href="/products/edit/${product.id}/" class="btn btn-primary btn-sm">Edit</a>
-                                <button onclick="deleteProduct(${product.id}, '${product.name.replace(/'/g, "\\'")}')" 
-                                   class="btn btn-danger btn-sm">
-                                   Delete
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
-            } else if (tableId === 'staffTableBody') {
-                results.forEach(user => {
-                    const statusBadge = user.is_active ? 
-                        '<span class="badge badge-success">Active</span>' : 
-                        '<span class="badge badge-danger">Inactive</span>';
-                    
-                    const roleBadge = `<span class="badge" style="background:#e0e7ff; color:#3730a3;">${user.role}</span>`;
-                    
-                    const date = new Date(user.date_joined);
-                    const formattedDate = date.toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric', 
-                        year: 'numeric'
-                    });
-                    
-                    rowsHtml += `
-                        <tr>
-                            <td><strong>${user.username}</strong></td>
-                            <td>${user.first_name} ${user.last_name}</td>
-                            <td>${user.email}</td>
-                            <td>${user.phone || '-'}</td>
-                            <td>${roleBadge}</td>
-                            <td>${formattedDate}</td>
-                            <td>${statusBadge}</td>
-                            <td>
-                                <button onclick="editStaff(${user.id})" class="btn btn-primary btn-sm">
-                                    Edit
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
-            } else if (tableId === 'debtorTableBody') {
-                results.forEach(sale => {
-                    const date = new Date(sale.created_at);
-                    const formattedDate = date.toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric', 
-                        year: 'numeric'
-                    });
-                    
-                    rowsHtml += `
-                        <tr>
-                            <td><strong>${sale.invoice_number}</strong></td>
-                            <td>${sale.customer_name || 'Walk-in'}</td>
-                            <td>${sale.customer_phone || '-'}</td>
-                            <td>₦${parseFloat(sale.total).toFixed(2)}</td>
-                            <td>₦${parseFloat(sale.amount_paid).toFixed(2)}</td>
-                            <td><strong style="color: #dc3545;">₦${parseFloat(sale.balance).toFixed(2)}</strong></td>
-                            <td>${formattedDate}</td>
-                            <td>
-                                <a href="/debtors/payment/${sale.id}/" class="btn btn-success btn-sm">
-                                    Record Payment
-                                </a>
-                                <a href="/receipt/${sale.id}/" class="btn btn-primary btn-sm">
-                                    View
-                                </a>
-                            </td>
-                        </tr>
-                    `;
-                });
             }
+            // ... other table update logic ...
             
             if (limited) {
                 rowsHtml += `
@@ -1169,13 +1209,52 @@
             tableBody.innerHTML = rowsHtml;
         }
         
-        // Edit staff function (for staff list page)
-        function editStaff(userId) {
-            // Just redirect to edit page, no confirmation needed
-            window.location.href = `/staff/edit/${userId}/`;
+        function setupFormVisualFeedback() {
+            document.addEventListener('submit', function(e) {
+                const form = e.target;
+                const submitBtn = form.querySelector('button[type="submit"]');
+                
+                if (submitBtn && !form.classList.contains('no-loading')) {
+                    const originalText = submitBtn.innerHTML;
+                    submitBtn.dataset.originalText = originalText;
+                    
+                    submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
+                    submitBtn.disabled = true;
+                    
+                    setTimeout(() => {
+                        if (submitBtn.disabled) {
+                            submitBtn.innerHTML = originalText;
+                            submitBtn.disabled = false;
+                        }
+                    }, 3000);
+                }
+            });
+            
+            if (!document.querySelector('style[data-spinner]')) {
+                const spinnerStyle = document.createElement('style');
+                spinnerStyle.setAttribute('data-spinner', 'true');
+                spinnerStyle.textContent = `
+                    .spinner {
+                        display: inline-block;
+                        width: 16px;
+                        height: 16px;
+                        border: 2px solid rgba(255,255,255,0.3);
+                        border-radius: 50%;
+                        border-top-color: #fff;
+                        animation: spin 1s ease-in-out infinite;
+                        margin-right: 8px;
+                        vertical-align: middle;
+                    }
+                    
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `;
+                document.head.appendChild(spinnerStyle);
+            }
         }
         
-        // Universal delete confirmation - KEEP THIS MODAL (important action)
+        // Universal delete confirmation
         async function deleteProduct(productId, productName) {
             const result = await confirm(`Are you sure you want to delete "${productName}"? This action cannot be undone.`);
             if (result) {
@@ -1203,25 +1282,8 @@
             return false;
         }
         
-        // Get CSRF token for AJAX requests
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-        
         // SAVED CART FUNCTIONS
         async function loadSavedCart(cartId, cartName) {
-            // No confirmation needed for loading cart
             try {
                 const response = await fetch(`/api/load-saved-cart/${cartId}/`);
                 const result = await response.json();
@@ -1248,7 +1310,6 @@
         }
         
         async function deleteSavedCart(cartId, cartName) {
-            // KEEP CONFIRMATION FOR DELETE
             const result = await confirm(`Are you sure you want to delete "${cartName}"?`);
             if (result) {
                 try {

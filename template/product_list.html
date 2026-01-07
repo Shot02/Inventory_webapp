@@ -99,7 +99,7 @@
         background: white;
         padding: 2rem;
         border-radius: 12px;
-        width: 600px;
+        width: 700px;
         max-width: 90%;
         max-height: 90vh;
         overflow-y: auto;
@@ -124,44 +124,46 @@
     
     .form-group label {
         display: block;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.3rem;
         font-weight: 500;
         color: #333;
+        font-size: 0.9rem;
     }
     
     .form-control {
         width: 100%;
-        padding: 0.75rem;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
-        font-size: 1rem;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 0.95rem;
         transition: all 0.3s;
     }
     
     .form-control:focus {
         outline: none;
         border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
     }
     
     .image-preview {
-        width: 150px;
-        height: 150px;
+        width: 120px;
+        height: 120px;
         object-fit: cover;
         border-radius: 8px;
-        border: 2px dashed #ddd;
+        border: 1px solid #ddd;
     }
     
     .image-placeholder {
-        width: 150px;
-        height: 150px;
+        width: 120px;
+        height: 120px;
         background: #f8f9fa;
-        border: 2px dashed #ddd;
+        border: 1px dashed #ddd;
         border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
         color: #999;
+        font-size: 0.85rem;
     }
     
     .checkbox-label {
@@ -170,6 +172,7 @@
         gap: 0.5rem;
         cursor: pointer;
         margin-top: 0.5rem;
+        font-size: 0.9rem;
     }
     
     /* Toast Notification */
@@ -212,6 +215,30 @@
             transform: translateX(100%);
             opacity: 0;
         }
+    }
+    
+    .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+    
+    .field-hint {
+        font-size: 0.8rem;
+        color: #666;
+        margin-top: 0.2rem;
+        display: block;
+    }
+    
+    .optional-badge {
+        display: inline-block;
+        background: #e5e7eb;
+        color: #6b7280;
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        margin-left: 0.3rem;
+        font-weight: normal;
     }
 </style>
 
@@ -332,7 +359,7 @@
 <div id="editProductModal" class="modal-overlay">
     <div class="modal-content">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h3 style="margin: 0;">Edit Product</h3>
+            <h3 style="margin: 0; font-size: 1.3rem;">Edit Product</h3>
             <button onclick="closeEditProductModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">&times;</button>
         </div>
         
@@ -340,87 +367,119 @@
             {% csrf_token %}
             <input type="hidden" id="editProductId" name="product_id">
             
-            <div class="form-group">
-                <label for="editProductName">Product Name *</label>
-                <input type="text" id="editProductName" name="name" class="form-control" required>
-            </div>
-            
-            <div class="form-group">
-                <label>SKU</label>
-                <input type="text" id="editProductSKU" class="form-control" disabled
-                       style="background: #f8f9fa; color: #666;">
-                <small style="color: #666;">SKU is auto-generated and cannot be changed</small>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+            <div class="grid-2">
                 <div class="form-group">
-                    <label for="editProductCategory">Category</label>
+                    <label for="editProductName">
+                        Product Name 
+                        <span class="optional-badge">optional</span>
+                    </label>
+                    <input type="text" id="editProductName" name="name" class="form-control" 
+                           placeholder="Product name (optional)">
+                    <span class="field-hint">Defaults to "Unnamed Product" if empty</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editProductSKU">SKU</label>
+                    <input type="text" id="editProductSKU" class="form-control" disabled
+                           style="background: #f8f9fa; color: #666;">
+                    <span class="field-hint">Auto-generated, cannot be changed</span>
+                </div>
+            </div>
+            
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="editProductCategory">
+                        Category 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <select id="editProductCategory" name="category" class="form-control">
-                        <option value="">-- Select Category --</option>
+                        <option value="">-- Select Category (optional) --</option>
                         {% for category in categories %}
                         <option value="{{ category.id }}">{{ category.name }}</option>
                         {% endfor %}
                     </select>
-                    <div style="margin-top: 0.5rem;">
-                        <input type="text" id="editNewCategory" name="new_category" class="form-control" 
-                               placeholder="Or enter new category">
-                    </div>
+                    <input type="text" id="editNewCategory" name="new_category" class="form-control" 
+                           style="margin-top: 0.5rem;" placeholder="Or enter new category (optional)">
                 </div>
                 
                 <div class="form-group">
-                    <label for="editProductSupplier">Supplier</label>
+                    <label for="editProductSupplier">
+                        Supplier 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <select id="editProductSupplier" name="supplier" class="form-control">
-                        <option value="">-- Select Supplier --</option>
+                        <option value="">-- Select Supplier (optional) --</option>
                         {% for supplier in suppliers %}
                         <option value="{{ supplier.id }}">{{ supplier.name }}</option>
                         {% endfor %}
                     </select>
-                    <div style="margin-top: 0.5rem;">
-                        <input type="text" id="editNewSupplier" name="new_supplier" class="form-control" 
-                               placeholder="Or enter new supplier">
-                    </div>
+                    <input type="text" id="editNewSupplier" name="new_supplier" class="form-control" 
+                           style="margin-top: 0.5rem;" placeholder="Or enter new supplier (optional)">
                 </div>
             </div>
             
             <div class="form-group">
-                <label for="editProductDescription">Description</label>
-                <textarea id="editProductDescription" name="description" class="form-control" rows="3"></textarea>
+                <label for="editProductDescription">
+                    Description 
+                    <span class="optional-badge">optional</span>
+                </label>
+                <textarea id="editProductDescription" name="description" class="form-control" rows="3" 
+                          placeholder="Product description (optional)"></textarea>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+            <div class="grid-2">
                 <div class="form-group">
-                    <label for="editProductPrice">Selling Price (₦) *</label>
+                    <label for="editProductPrice">
+                        Selling Price (₦) 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" id="editProductPrice" name="price" class="form-control" 
-                           step="0.01" min="0" required>
+                           step="0.01" min="0" placeholder="0.00 (optional)">
+                    <span class="field-hint">Defaults to 0.00 if empty</span>
                 </div>
                 
                 <div class="form-group">
-                    <label for="editProductCostPrice">Cost Price (₦)</label>
+                    <label for="editProductCostPrice">
+                        Cost Price (₦) 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" id="editProductCostPrice" name="cost_price" class="form-control" 
-                           step="0.01" min="0">
+                           step="0.01" min="0" placeholder="0.00 (optional)">
+                    <span class="field-hint">Defaults to 0.00 if empty</span>
                 </div>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+            <div class="grid-2">
                 <div class="form-group">
-                    <label for="editProductQuantity">Quantity *</label>
+                    <label for="editProductQuantity">
+                        Quantity 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" id="editProductQuantity" name="quantity" class="form-control" 
-                           min="0" required>
+                           min="0" placeholder="0 (optional)">
+                    <span class="field-hint">Defaults to 0 if empty</span>
                 </div>
                 
                 <div class="form-group">
-                    <label for="editProductReorderLevel">Reorder Level</label>
+                    <label for="editProductReorderLevel">
+                        Reorder Level 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" id="editProductReorderLevel" name="reorder_level" class="form-control" 
-                           min="0">
+                           min="0" placeholder="10 (optional)">
+                    <span class="field-hint">Defaults to 10 if empty</span>
                 </div>
             </div>
             
             <div class="form-group">
-                <label for="editProductImage">Product Image</label>
+                <label for="editProductImage">
+                    Product Image 
+                    <span class="optional-badge">optional</span>
+                </label>
                 <input type="file" id="editProductImage" name="image" class="form-control" accept="image/*">
                 
                 <div style="margin-top: 1rem;">
-                    <p><strong>Current Image:</strong></p>
+                    <p style="margin-bottom: 0.5rem; font-weight: 500;">Current Image:</p>
                     <div style="display: flex; align-items: center; gap: 1rem;">
                         <div id="currentImageContainer" class="image-placeholder">
                             No image
@@ -430,19 +489,27 @@
                                 <input type="checkbox" id="editClearImage" name="clear_image" value="1">
                                 <span>Remove current image</span>
                             </label>
-                            <p style="color: #666; font-size: 0.9rem; margin-top: 0.5rem;">
-                                Upload a new image to replace the current one
+                            <p class="field-hint" style="margin-top: 0.5rem;">
+                                Upload a new image to replace the current one (optional)
                             </p>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                <button type="submit" class="btn btn-success" style="flex: 1;" id="editProductSubmitBtn">
+            <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin: 1.5rem 0; border-left: 4px solid #3b82f6;">
+                <p style="margin: 0; color: #1e40af; font-size: 0.9rem; font-weight: 500;">
+                    💡 <strong>Note:</strong> All fields are optional. Empty fields will use default values.
+                </p>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button type="submit" class="btn btn-success" style="flex: 1; padding: 0.75rem;" id="editProductSubmitBtn">
                     Save Changes
                 </button>
-                <button type="button" onclick="closeEditProductModal()" class="btn btn-danger"> Cancel</button>
+                <button type="button" onclick="closeEditProductModal()" class="btn btn-danger" style="padding: 0.75rem 1.5rem;">
+                    Cancel
+                </button>
             </div>
         </form>
     </div>
@@ -479,9 +546,9 @@ function openEditProductModal(productId) {
         }
         
         const productData = {
-            id: row.dataset.productId,
-            name: row.dataset.name,
-            sku: row.dataset.sku,
+            id: row.dataset.productId || '',
+            name: row.dataset.name || '',
+            sku: row.dataset.sku || '',
             categoryId: row.dataset.categoryId || '',
             categoryName: row.dataset.categoryName || '',
             supplierId: row.dataset.supplierId || '',
@@ -494,19 +561,21 @@ function openEditProductModal(productId) {
             imageUrl: row.dataset.imageUrl || ''
         };
         
+        // Populate the form - all fields can be empty
         document.getElementById('editProductId').value = productData.id;
-        document.getElementById('editProductName').value = productData.name;
-        document.getElementById('editProductSKU').value = productData.sku;
-        document.getElementById('editProductCategory').value = productData.categoryId;
+        document.getElementById('editProductName').value = productData.name || '';
+        document.getElementById('editProductSKU').value = productData.sku || '';
+        document.getElementById('editProductCategory').value = productData.categoryId || '';
         document.getElementById('editNewCategory').value = (productData.categoryName && !productData.categoryId) ? productData.categoryName : '';
-        document.getElementById('editProductSupplier').value = productData.supplierId;
+        document.getElementById('editProductSupplier').value = productData.supplierId || '';
         document.getElementById('editNewSupplier').value = (productData.supplierName && !productData.supplierId) ? productData.supplierName : '';
-        document.getElementById('editProductDescription').value = productData.description;
-        document.getElementById('editProductPrice').value = productData.price;
-        document.getElementById('editProductCostPrice').value = productData.costPrice;
-        document.getElementById('editProductQuantity').value = productData.quantity;
-        document.getElementById('editProductReorderLevel').value = productData.reorderLevel;
+        document.getElementById('editProductDescription').value = productData.description || '';
+        document.getElementById('editProductPrice').value = productData.price || '0.00';
+        document.getElementById('editProductCostPrice').value = productData.costPrice || '0.00';
+        document.getElementById('editProductQuantity').value = productData.quantity || '0';
+        document.getElementById('editProductReorderLevel').value = productData.reorderLevel || '10';
         
+        // Handle image
         const imageContainer = document.getElementById('currentImageContainer');
         if (productData.imageUrl) {
             imageContainer.innerHTML = `<img src="${productData.imageUrl}" class="image-preview">`;
@@ -531,11 +600,25 @@ function openEditProductModal(productId) {
 // Close edit product modal
 function closeEditProductModal() {
     document.getElementById('editProductModal').style.display = 'none';
-    document.getElementById('editProductForm').reset();
     
+    // Reset form but don't clear values from DOM
+    const form = document.getElementById('editProductForm');
+    form.reset();
+    
+    // Reset image container
     const imageContainer = document.getElementById('currentImageContainer');
     imageContainer.innerHTML = 'No image';
     imageContainer.className = 'image-placeholder';
+    
+    // Reset clear image checkbox
+    document.getElementById('editClearImage').checked = false;
+    document.getElementById('editClearImage').disabled = true;
+    
+    // Reset submit button
+    const submitBtn = document.getElementById('editProductSubmitBtn');
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'Save Changes';
+    submitBtn.style.background = '';
 }
 
 // Handle category/supplier selection logic
@@ -563,63 +646,23 @@ document.getElementById('editNewSupplier').addEventListener('input', function() 
     }
 });
 
-// Handle edit product form submission - NO CONFIRMATION POPUP
+// Handle edit product form submission - NO VALIDATION AT ALL
 document.getElementById('editProductForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const submitBtn = document.getElementById('editProductSubmitBtn');
     const formData = new FormData(this);
     
-    // Basic validation
+    // FIX: NO VALIDATION - all fields can be empty
+    // Set defaults for completely empty fields if needed
+    
     const productName = document.getElementById('editProductName').value.trim();
-    const price = parseFloat(document.getElementById('editProductPrice').value) || 0;
-    const quantity = parseInt(document.getElementById('editProductQuantity').value) || 0;
-    const category = document.getElementById('editProductCategory').value;
-    const newCategory = document.getElementById('editNewCategory').value.trim();
+    const price = document.getElementById('editProductPrice').value.trim();
     
-    // Validation feedback
-    let isValid = true;
+    // If name is empty, we'll let the backend handle it (it will use "Unnamed Product")
+    // If price is empty, we'll let the backend handle it (it will use "0.00")
     
-    if (!productName) {
-        document.getElementById('editProductName').focus();
-        document.getElementById('editProductName').style.borderColor = '#f56565';
-        isValid = false;
-    } else {
-        document.getElementById('editProductName').style.borderColor = '#e0e0e0';
-    }
-    
-    if (price <= 0) {
-        document.getElementById('editProductPrice').focus();
-        document.getElementById('editProductPrice').style.borderColor = '#f56565';
-        isValid = false;
-    } else {
-        document.getElementById('editProductPrice').style.borderColor = '#e0e0e0';
-    }
-    
-    if (quantity < 0) {
-        document.getElementById('editProductQuantity').focus();
-        document.getElementById('editProductQuantity').style.borderColor = '#f56565';
-        isValid = false;
-    } else {
-        document.getElementById('editProductQuantity').style.borderColor = '#e0e0e0';
-    }
-    
-    if (!category && !newCategory) {
-        if (newCategory) {
-            document.getElementById('editNewCategory').style.borderColor = '#f56565';
-        } else {
-            document.getElementById('editProductCategory').style.borderColor = '#f56565';
-        }
-        isValid = false;
-    } else {
-        document.getElementById('editProductCategory').style.borderColor = '#e0e0e0';
-        document.getElementById('editNewCategory').style.borderColor = '#e0e0e0';
-    }
-    
-    if (!isValid) {
-        showToast('Please fill in all required fields correctly', 'error');
-        return;
-    }
+    // Don't do any frontend validation - just submit the form
     
     try {
         // Show loading state
@@ -899,6 +942,19 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(() => debounceProductSearch(), 100);
         }
     }
+    
+    // Handle image preview when file is selected
+    document.getElementById('editProductImage').addEventListener('change', function(e) {
+        if (this.files && this.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageContainer = document.getElementById('currentImageContainer');
+                imageContainer.innerHTML = `<img src="${e.target.result}" class="image-preview">`;
+                imageContainer.className = 'image-preview';
+            }
+            reader.readAsDataURL(this.files[0]);
+        }
+    });
 });
 </script>
 {% endblock %}

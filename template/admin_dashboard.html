@@ -364,7 +364,21 @@
         <div class="value">₦{{ card_payments|floatformat:2 }}</div>
         <div class="subtext">This period</div>
     </div>
+
+    <div class="stat-card teal">
+        <h3>Today's Refunds</h3>
+        <div class="value" id="todayRefunds">₦0.00</div>
+        <div class="subtext">Processed today</div>
+    </div>
+
+    <div class="stat-card pink">
+        <h3>Pending Refunds</h3>
+        <div class="value" id="pendingRefunds">0</div>
+        <div class="subtext">Awaiting approval</div>
+    </div>
 </div>
+
+
 
 <!-- Total Revenue Card -->
 <div class="revenue-card">
@@ -682,6 +696,41 @@ function updateSearchCount(type, count) {
     }
 }
 
+async function loadRefundStats() {
+    try {
+        const response = await fetch('/api/refund-stats/');
+        const data = await response.json();
+        
+        document.getElementById('todayRefunds').textContent = `₦${data.today_refunds.toFixed(2)}`;
+        document.getElementById('pendingRefunds').textContent = data.pending_requests;
+    } catch (error) {
+        console.error('Error loading refund stats:', error);
+    }
+}
+
+// Load on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadRefundStats();
+});
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Get the unread count from data attribute
+    const unreadCount = parseInt(document.body.dataset.unreadDashboardCount || '0');
+    
+    if (unreadCount > 0) {
+        fetch('/mark-notifications-read/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                notification_type: 'dashboard'
+            })
+        });
+    }
+});
 // Initialize search inputs
 document.addEventListener('DOMContentLoaded', function() {
     const salesSearchInput = document.getElementById('salesSearchInput');

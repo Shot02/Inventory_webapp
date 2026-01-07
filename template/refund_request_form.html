@@ -2,137 +2,1177 @@
 
 {% block title %}{{ action }} Refund Request{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Tab Styles */
+    .tab-container {
+        margin-bottom: 2rem;
+    }
+    
+    .tab-buttons {
+        display: flex;
+        border-bottom: 2px solid #ddd;
+        margin-bottom: 1.5rem;
+    }
+    
+    .tab-button {
+        padding: 0.75rem 1.5rem;
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        font-size: 1rem;
+        font-weight: 500;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .tab-button:hover {
+        color: #667eea;
+    }
+    
+    .tab-button.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+        background: #f0f4ff;
+    }
+    
+    .tab-content {
+        display: none;
+        animation: fadeIn 0.3s ease-out;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    /* Common Styles */
+    .search-section {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-section-title {
+        color: #667eea;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #f0f0f0;
+    }
+    
+    /* Recent Sales Grid */
+    .recent-sales-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .sale-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        border: 1px solid #e0e0e0;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .sale-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        border-color: #667eea;
+    }
+    
+    .sale-card.selected {
+        border-color: #667eea;
+        background: #f0f4ff;
+    }
+    
+    .sale-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    .sale-invoice {
+        font-weight: bold;
+        color: #667eea;
+        font-size: 1.1rem;
+    }
+    
+    .sale-date {
+        font-size: 0.85rem;
+        color: #666;
+    }
+    
+    .sale-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .sale-customer {
+        grid-column: span 2;
+        color: #666;
+        font-style: italic;
+    }
+    
+    .sale-status {
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-align: center;
+    }
+    
+    .status-paid { background: #d1fae5; color: #065f46; }
+    .status-partial { background: #fef3c7; color: #92400e; }
+    .status-unpaid { background: #fee2e2; color: #b91c1c; }
+    
+    /* Quick Stats */
+    .quick-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stat-item {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #667eea;
+        margin-bottom: 0.25rem;
+    }
+    
+    .stat-label {
+        font-size: 0.85rem;
+        color: #666;
+    }
+    
+    /* Selected Sale Details */
+    .amount-info {
+        background: #f0f9ff;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin: 1.5rem 0;
+        border-left: 4px solid #3b82f6;
+    }
+    
+    .sale-info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+        font-size: 0.95rem;
+    }
+    
+    .sale-info div {
+        padding: 0.5rem 0;
+        border-bottom: 1px dashed #e0e0e0;
+    }
+    
+    .sale-info div:last-child {
+        border-bottom: none;
+    }
+    
+    /* Item Selection */
+    .item-list {
+        margin-top: 1rem;
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+    }
+    
+    .item-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    
+    .item-row:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .item-row.selected {
+        background-color: #e3f2fd;
+        border-left: 4px solid #2196f3;
+    }
+    
+    /* Form Styles */
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #333;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s;
+    }
+    
+    .form-control:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .validation-error {
+        color: #dc3545;
+        font-size: 0.9rem;
+        margin-top: 0.25rem;
+        display: none;
+    }
+    
+    /* All Sales Modal */
+    .all-sales-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 10000;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        backdrop-filter: blur(3px);
+    }
+    
+    .all-sales-content {
+        background: white;
+        width: 90%;
+        max-width: 1200px;
+        height: 80%;
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .all-sales-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .all-sales-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.5rem;
+    }
+    
+    .all-sales-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+    
+    /* Info Notes */
+    .info-note {
+        background: #fff3cd;
+        color: #856404;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        border-left: 4px solid #ffc107;
+        font-size: 0.95rem;
+    }
+    
+    .info-note ol {
+        margin: 0.5rem 0 0 1.5rem;
+    }
+    
+    .info-note li {
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Loading States */
+    .loading {
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+    }
+    
+    .loading .spinner {
+        display: inline-block;
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    /* Empty States */
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    /* Customer Details Form */
+    .customer-form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    @media (max-width: 768px) {
+        .customer-form-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .recent-sales-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .all-sales-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .sale-info {
+            grid-template-columns: 1fr;
+        }
+        
+        .quick-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div style="max-width: 600px; margin: 0 auto;">
+<div style="max-width: 1200px; margin: 0 auto;">
     <h1 style="margin-bottom: 2rem;">{{ action }} Refund Request</h1>
 
-    <div class="card">
-        <form method="post">
-            {% csrf_token %}
-            
-            {% if form.errors %}
-            <div class="alert alert-error" style="margin-bottom: 1rem;">
-                <strong>Please fix the following errors:</strong>
-                <ul style="margin: 0.5rem 0 0 1rem;">
-                    {% for field, errors in form.errors.items %}
-                        {% for error in errors %}
-                            <li>{{ field|title }}: {{ error }}</li>
-                        {% endfor %}
-                    {% endfor %}
-                </ul>
+    <div class="info-note">
+        <strong>How to request a refund:</strong>
+        <ol>
+            <li><strong>Select a recent sale</strong> from the list below</li>
+            <li><strong>Choose specific items</strong> (optional) for partial refunds</li>
+            <li><strong>Enter refund amount</strong> and reason</li>
+            <li><strong>Submit</strong> for admin approval</li>
+        </ol>
+        <p style="margin-top: 0.5rem; font-style: italic;"><strong>Note:</strong> Only sales with paid amounts can be refunded.</p>
+    </div>
+
+    <!-- Single Section for Recent Sales -->
+    <div class="search-section">
+        <h3 class="form-section-title">Select Sale for Refund</h3>
+        
+        <!-- Quick Stats -->
+        <div class="quick-stats">
+            <div class="stat-item">
+                <div class="stat-value" id="todaySalesCount">0</div>
+                <div class="stat-label">Today's Sales</div>
             </div>
-            {% endif %}
+            <div class="stat-item">
+                <div class="stat-value" id="lastWeekSalesCount">0</div>
+                <div class="stat-label">Last 7 Days</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="currentStaffSales">0</div>
+                <div class="stat-label">Your Sales Today</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="totalRefundable">₦0</div>
+                <div class="stat-label">Total Refundable</div>
+            </div>
+        </div>
+        
+        <!-- Recent Sales Grid -->
+        <h4 style="margin-bottom: 1rem; color: #333;">Recent Sales (Last 24 Hours)</h4>
+        <div id="recentSalesGrid" class="recent-sales-grid">
+            <!-- Loading initial state -->
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading recent sales...</p>
+            </div>
+        </div>
+        
+        <!-- View All Button -->
+        <div style="text-align: center; margin-top: 1.5rem;">
+            <button type="button" id="viewAllSales" class="btn btn-outline-primary">
+                View All Sales
+            </button>
+        </div>
+        
+        <!-- Selected Sale Details (Hidden by default) -->
+        <div id="selectedSaleDetails" style="display: none; margin-top: 2rem;">
+            <h3 class="form-section-title">Selected Sale Details</h3>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label>Customer Name *</label>
-                    <input type="text" name="customer_name" class="form-control" 
-                           value="{{ form.customer_name.value|default:'' }}" required>
+            <div class="amount-info">
+                <h4 style="margin: 0 0 1rem 0; color: #1e40af;">Transaction Details</h4>
+                <div class="sale-info">
+                    <div><strong>Invoice:</strong> <span id="selectedSaleInvoice" style="color: #667eea; font-weight: bold;">-</span></div>
+                    <div><strong>Date & Time:</strong> <span id="selectedSaleDate">-</span></div>
+                    <div><strong>Customer:</strong> <span id="selectedSaleCustomer">Walk-in Customer</span></div>
+                    <div><strong>Staff:</strong> <span id="selectedSaleStaff">-</span></div>
+                    <div><strong>Total Amount:</strong> <span style="font-weight: bold;">₦<span id="selectedSaleTotal">0.00</span></span></div>
+                    <div><strong>Amount Paid:</strong> <span style="color: #10b981;">₦<span id="selectedSalePaid">0.00</span></span></div>
+                    <div><strong>Balance:</strong> <span style="color: #ef4444;">₦<span id="selectedSaleBalance">0.00</span></span></div>
+                    <div><strong>Max Refundable:</strong> <span style="color: #3b82f6; font-weight: bold;">₦<span id="selectedSaleMaxRefund">0.00</span></span></div>
                 </div>
-                
-                <div class="form-group">
-                    <label>Customer Phone *</label>
-                    <input type="tel" name="customer_phone" class="form-control" 
-                           value="{{ form.customer_phone.value|default:'' }}" required>
-                </div>
             </div>
             
-            <div class="form-group">
-                <label>Reason for Refund *</label>
-                <textarea name="reason" class="form-control" rows="4" required>{{ form.reason.value|default:'' }}</textarea>
-            </div>
-            
-            <div class="form-group">
-                <label>Refund Amount (₦) *</label>
-                <input type="number" name="amount" class="form-control" 
-                       step="0.01" min="0.01" 
-                       value="{{ form.amount.value|default:'' }}" required>
-            </div>
-            
-            {% if refund_request %}
-            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <p><strong>Request Date:</strong> {{ refund_request.request_date|date:"M d, Y H:i" }}</p>
-                <p><strong>Status:</strong> 
-                    {% if refund_request.status == 'pending' %}
-                    <span style="background: #fef3c7; color: #92400e; padding: 0.2rem 0.5rem; border-radius: 4px;">Pending</span>
-                    {% elif refund_request.status == 'approved' %}
-                    <span style="background: #d1fae5; color: #065f46; padding: 0.2rem 0.5rem; border-radius: 4px;">Approved</span>
-                    {% else %}
-                    <span style="background: #fee2e2; color: #b91c1c; padding: 0.2rem 0.5rem; border-radius: 4px;">Declined</span>
-                    {% endif %}
+            <!-- Item Selection -->
+            <div id="itemSelection" style="margin-top: 1.5rem;">
+                <h4 style="margin-bottom: 0.5rem;">Select Item to Refund (Optional)</h4>
+                <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                    Choose specific item(s) for partial refunds. Leave unselected for full transaction refund.
                 </p>
-                <p><strong>Created By:</strong> {{ refund_request.created_by.get_full_name|default:refund_request.created_by.username }}</p>
+                <div id="saleItemList" class="item-list">
+                    <!-- Items will be loaded here -->
+                </div>
             </div>
-            {% endif %}
             
-            <div style="display: flex; gap: 1rem;">
-                <button type="submit" class="btn btn-success" style="flex: 1;">
-                    {% if action == 'Create' %}Submit Request{% else %}Update Request{% endif %}
-                </button>
-                <a href="{% url 'refund_requests_list' %}" class="btn btn-danger">Cancel</a>
+            <!-- Refund Details Form -->
+            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #f0f0f0;">
+                <h3 class="form-section-title">Refund Details</h3>
+                
+                <form id="recentSalesRefundForm" method="post">
+                    {% csrf_token %}
+                    
+                    <!-- Hidden Fields -->
+                    <input type="hidden" name="sale_id" id="recentSaleId" value="">
+                    <input type="hidden" name="sale_item_id" id="recentSaleItemId" value="">
+                    <input type="hidden" name="customer_name" id="recentCustomerName" value="">
+                    <input type="hidden" name="customer_phone" id="recentCustomerPhone" value="">
+                    <input type="hidden" name="refund_method" value="recent_sales">
+                    
+                    <!-- Refund Amount -->
+                    <div class="form-group">
+                        <label>Refund Amount (₦) *</label>
+                        <input type="number" name="amount" class="form-control" 
+                               id="recentRefundAmount" step="0.01" min="0.01" required 
+                               placeholder="Enter refund amount">
+                        <small style="color: #666; display: block; margin-top: 0.5rem;">
+                            Maximum refundable: <strong>₦<span id="recentMaxRefundDisplay">0.00</span></strong>
+                        </small>
+                        <div id="recentAmountError" class="validation-error">
+                            Amount cannot exceed maximum refundable amount
+                        </div>
+                    </div>
+                    
+                    <!-- Reason for Refund -->
+                    <div class="form-group">
+                        <label>Reason for Refund *</label>
+                        <textarea name="reason" class="form-control" rows="4" 
+                                  id="recentRefundReason" required 
+                                  placeholder="Please provide detailed reason for this refund (e.g., wrong item, damaged goods, customer request)..."></textarea>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div style="display: flex; gap: 1rem; padding-top: 1.5rem; border-top: 1px solid #eee;">
+                        <button type="submit" class="btn btn-success" style="flex: 1; padding: 1rem; font-size: 1.1rem;" id="recentSubmitBtn">
+                            Submit Refund Request
+                        </button>
+                        <button type="button" onclick="clearRecentSelection()" class="btn btn-danger" style="padding: 1rem;">
+                            Clear Selection
+                        </button>
+                    </div>
+                </form>
             </div>
-        </form>
+        </div>
+    </div>
+</div>
+
+<!-- All Sales Modal -->
+<div id="allSalesModal" class="all-sales-modal">
+    <div class="all-sales-content">
+        <div class="all-sales-header">
+            <h3 style="margin: 0;">All Sales</h3>
+            <button onclick="closeAllSalesModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">&times;</button>
+        </div>
+        
+        <div class="all-sales-body">
+            <div style="margin-bottom: 1.5rem;">
+                <input type="text" 
+                       class="search-input"
+                       id="allSalesSearch"
+                       placeholder="Search all sales...">
+            </div>
+            
+            <div id="allSalesGrid" class="all-sales-grid">
+                <!-- All sales will be loaded here -->
+            </div>
+            
+            <div id="allSalesPagination" style="margin-top: 1.5rem; text-align: center; display: none;">
+                <button onclick="loadMoreSales()" class="btn btn-primary">
+                    Load More Sales
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const amountInput = document.querySelector('input[name="amount"]');
-    const customerNameInput = document.querySelector('input[name="customer_name"]');
+// =================== GLOBAL VARIABLES ===================
+let selectedSale = null;
+let selectedItem = null;
+let allSalesData = [];
+let currentPage = 1;
+
+// =================== UTILITY FUNCTIONS ===================
+
+// Format currency
+function formatCurrency(amount) {
+    return parseFloat(amount).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+}
+
+// Show toast notification
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <div class="toast-content">
+            ${message}
+        </div>
+    `;
     
-    // Set focus on first field
-    if (customerNameInput) {
-        customerNameInput.focus();
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 3000);
+}
+
+// Get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// =================== RECENT SALES FUNCTIONALITY ===================
+
+// Load quick stats
+async function loadQuickStats() {
+    try {
+        const response = await fetch('/api/recent-sales-stats/');
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('todaySalesCount').textContent = data.today_count;
+            document.getElementById('lastWeekSalesCount').textContent = data.week_count;
+            document.getElementById('currentStaffSales').textContent = data.staff_count;
+            document.getElementById('totalRefundable').textContent = `₦${formatCurrency(data.total_refundable || 0)}`;
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+// Load recent sales
+async function loadRecentSales() {
+    try {
+        const grid = document.getElementById('recentSalesGrid');
+        grid.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading recent sales...</p>
+            </div>
+        `;
+        
+        const response = await fetch('/api/recent-sales/');
+        const data = await response.json();
+        
+        if (data.success) {
+            displayRecentSales(data.sales);
+        } else {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon"></div>
+                    <h4>Error Loading Sales</h4>
+                    <p>${data.error || 'Please try again'}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading recent sales:', error);
+        const grid = document.getElementById('recentSalesGrid');
+        grid.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon"></div>
+                <h4>Network Error</h4>
+                <p>Unable to load sales. Please check your connection.</p>
+            </div>
+        `;
+    }
+}
+
+// Display recent sales
+function displayRecentSales(sales) {
+    const grid = document.getElementById('recentSalesGrid');
+    
+    if (sales.length === 0) {
+        grid.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon"></div>
+                <h4>No Recent Sales</h4>
+                <p>No sales found in the last 24 hours</p>
+            </div>
+        `;
+        return;
     }
     
-    // Validate amount on input
-    if (amountInput) {
-        amountInput.addEventListener('input', function() {
-            const value = parseFloat(this.value) || 0;
-            if (value <= 0) {
-                this.setCustomValidity('Amount must be greater than 0');
+    let html = '';
+    sales.forEach(sale => {
+        // Determine status class
+        let statusClass = 'status-paid';
+        let statusText = 'Paid';
+        
+        if (sale.payment_status === 'partial') {
+            statusClass = 'status-partial';
+            statusText = 'Partial';
+        } else if (sale.payment_status === 'unpaid') {
+            statusClass = 'status-unpaid';
+            statusText = 'Unpaid';
+        }
+        
+        // Calculate maximum refundable
+        const maxRefund = Math.min(sale.amount_paid, sale.total);
+        
+        html += `
+            <div class="sale-card" data-sale-id="${sale.id}" data-max-refund="${maxRefund}">
+                <div class="sale-header">
+                    <div class="sale-invoice">${sale.invoice_number}</div>
+                    <span class="sale-date">${sale.formatted_date}</span>
+                </div>
+                
+                <div class="sale-details">
+                    <div class="sale-customer">
+                        👤 ${sale.customer_name || 'Walk-in Customer'}
+                        ${sale.customer_phone ? `<br><small>📞 ${sale.customer_phone}</small>` : ''}
+                    </div>
+                    <div><strong>Total:</strong> ₦${formatCurrency(sale.total)}</div>
+                    <div><strong>Paid:</strong> ₦${formatCurrency(sale.amount_paid)}</div>
+                    <div><strong>Balance:</strong> ₦${formatCurrency(sale.balance)}</div>
+                    <div><strong>Max Refund:</strong> <span style="color: #3b82f6;">₦${formatCurrency(maxRefund)}</span></div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    <div class="sale-status ${statusClass}">${statusText}</div>
+                    <div>
+                        <button type="button" class="btn btn-primary btn-sm" 
+                                onclick="selectSaleFromCard(${sale.id})">
+                            Select
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    grid.innerHTML = html;
+}
+
+// Select sale from card
+async function selectSaleFromCard(saleId) {
+    try {
+        // Remove selection from all cards
+        document.querySelectorAll('.sale-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        // Add selection to clicked card
+        const card = document.querySelector(`.sale-card[data-sale-id="${saleId}"]`);
+        if (card) {
+            card.classList.add('selected');
+        }
+        
+        // Get sale details
+        const response = await fetch(`/api/sale-details/${saleId}/`);
+        const data = await response.json();
+        
+        if (data.success) {
+            selectedSale = data.sale;
+            selectedItem = null;
+            displaySelectedSaleDetails();
+        } else {
+            showToast(data.error || 'Error loading sale details', 'error');
+        }
+    } catch (error) {
+        console.error('Error selecting sale:', error);
+        showToast('Error loading sale details', 'error');
+    }
+}
+
+// Display selected sale details
+function displaySelectedSaleDetails() {
+    if (!selectedSale) return;
+    
+    // Update display fields
+    document.getElementById('selectedSaleInvoice').textContent = selectedSale.invoice_number;
+    document.getElementById('selectedSaleDate').textContent = selectedSale.formatted_date;
+    document.getElementById('selectedSaleCustomer').textContent = selectedSale.customer_name || 'Walk-in Customer';
+    document.getElementById('selectedSaleStaff').textContent = selectedSale.staff_name;
+    document.getElementById('selectedSaleTotal').textContent = formatCurrency(selectedSale.total);
+    document.getElementById('selectedSalePaid').textContent = formatCurrency(selectedSale.amount_paid);
+    document.getElementById('selectedSaleBalance').textContent = formatCurrency(selectedSale.balance);
+    
+    // Calculate maximum refundable
+    const maxRefund = Math.min(selectedSale.amount_paid, selectedSale.total);
+    document.getElementById('selectedSaleMaxRefund').textContent = formatCurrency(maxRefund);
+    document.getElementById('recentMaxRefundDisplay').textContent = formatCurrency(maxRefund);
+    
+    // Update hidden form fields
+    document.getElementById('recentSaleId').value = selectedSale.id;
+    document.getElementById('recentCustomerName').value = selectedSale.customer_name || '';
+    document.getElementById('recentCustomerPhone').value = selectedSale.customer_phone || '';
+    document.getElementById('recentSaleItemId').value = '';
+    
+    // Display items
+    displaySaleItems(selectedSale.items);
+    
+    // Set default refund amount
+    document.getElementById('recentRefundAmount').value = formatCurrency(maxRefund);
+    
+    // Show the details section
+    document.getElementById('selectedSaleDetails').style.display = 'block';
+    
+    // Scroll to details
+    document.getElementById('selectedSaleDetails').scrollIntoView({ behavior: 'smooth' });
+    
+    // Validate amount
+    validateRecentAmount();
+}
+
+// Display sale items
+function displaySaleItems(items) {
+    const itemList = document.getElementById('saleItemList');
+    
+    if (!items || items.length === 0) {
+        itemList.innerHTML = '<div style="text-align: center; padding: 1rem; color: #666;">No items in this sale</div>';
+        return;
+    }
+    
+    let html = '';
+    items.forEach(item => {
+        const itemMaxRefund = Math.min(item.total, selectedSale.amount_paid);
+        
+        html += `
+            <div class="item-row" data-item-id="${item.id}" data-item-max="${itemMaxRefund}" onclick="selectItemFromList(${item.id})">
+                <div style="flex: 1;">
+                    <strong>${item.name}</strong><br>
+                    <small style="color: #666;">
+                        ${item.quantity} × ₦${formatCurrency(item.price)} = ₦${formatCurrency(item.total)}
+                    </small>
+                </div>
+                <div style="text-align: right;">
+                    <strong>₦${formatCurrency(item.total)}</strong><br>
+                    <small style="color: #3b82f6; font-size: 0.8rem;">
+                        Max refund: ₦${formatCurrency(itemMaxRefund)}
+                    </small>
+                </div>
+            </div>
+        `;
+    });
+    
+    itemList.innerHTML = html;
+}
+
+// Select specific item
+function selectItemFromList(itemId) {
+    if (!selectedSale || !selectedSale.items) return;
+    
+    const item = selectedSale.items.find(i => i.id === itemId);
+    if (!item) return;
+    
+    selectedItem = item;
+    
+    // Highlight selected item
+    document.querySelectorAll('.item-row').forEach(row => {
+        row.classList.remove('selected');
+    });
+    
+    const itemRow = document.querySelector(`.item-row[data-item-id="${itemId}"]`);
+    if (itemRow) {
+        itemRow.classList.add('selected');
+        
+        // Update max refund
+        const maxRefund = parseFloat(itemRow.dataset.itemMax);
+        document.getElementById('recentMaxRefundDisplay').textContent = formatCurrency(maxRefund);
+        
+        // Update form fields
+        document.getElementById('recentSaleItemId').value = itemId;
+        document.getElementById('recentRefundAmount').value = formatCurrency(maxRefund);
+        
+        validateRecentAmount();
+    }
+}
+
+// Clear recent selection
+function clearRecentSelection() {
+    selectedSale = null;
+    selectedItem = null;
+    
+    // Clear form
+    document.getElementById('recentSaleId').value = '';
+    document.getElementById('recentSaleItemId').value = '';
+    document.getElementById('recentCustomerName').value = '';
+    document.getElementById('recentCustomerPhone').value = '';
+    document.getElementById('recentRefundAmount').value = '';
+    document.getElementById('recentRefundReason').value = '';
+    
+    // Hide details section
+    document.getElementById('selectedSaleDetails').style.display = 'none';
+    
+    // Clear selection from cards
+    document.querySelectorAll('.sale-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    // Clear selection from items
+    document.querySelectorAll('.item-row').forEach(row => {
+        row.classList.remove('selected');
+    });
+    
+    showToast('Selection cleared', 'info');
+}
+
+// Validate amount for recent sales form
+function validateRecentAmount() {
+    const amountInput = document.getElementById('recentRefundAmount');
+    const amountError = document.getElementById('recentAmountError');
+    const amount = parseFloat(amountInput.value) || 0;
+    
+    let maxRefund = 0;
+    
+    if (selectedItem) {
+        maxRefund = parseFloat(document.querySelector(`.item-row[data-item-id="${selectedItem.id}"]`).dataset.itemMax);
+    } else if (selectedSale) {
+        maxRefund = Math.min(selectedSale.amount_paid, selectedSale.total);
+    }
+    
+    if (maxRefund > 0 && amount > maxRefund) {
+        amountError.style.display = 'block';
+        amountError.textContent = `Amount cannot exceed maximum refundable amount (₦${formatCurrency(maxRefund)})`;
+        amountInput.style.borderColor = '#dc3545';
+        return false;
+    } else if (amount <= 0) {
+        amountError.style.display = 'block';
+        amountError.textContent = 'Amount must be greater than 0';
+        amountInput.style.borderColor = '#dc3545';
+        return false;
+    } else {
+        amountError.style.display = 'none';
+        amountInput.style.borderColor = '#ddd';
+        return true;
+    }
+}
+
+// =================== ALL SALES MODAL FUNCTIONALITY ===================
+
+// Open all sales modal
+function openAllSalesModal() {
+    document.getElementById('allSalesModal').style.display = 'flex';
+    loadAllSales();
+}
+
+// Close all sales modal
+function closeAllSalesModal() {
+    document.getElementById('allSalesModal').style.display = 'none';
+    allSalesData = [];
+    currentPage = 1;
+}
+
+// Load all sales
+async function loadAllSales(searchTerm = '', page = 1) {
+    try {
+        const grid = document.getElementById('allSalesGrid');
+        if (page === 1) {
+            grid.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>${searchTerm ? 'Searching...' : 'Loading all sales...'}</p>
+                </div>
+            `;
+        }
+        
+        const url = searchTerm 
+            ? `/api/search-all-sales/?q=${encodeURIComponent(searchTerm)}&page=${page}`
+            : `/api/all-sales/?page=${page}`;
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            if (page === 1) {
+                allSalesData = data.sales;
             } else {
-                this.setCustomValidity('');
+                allSalesData = [...allSalesData, ...data.sales];
+            }
+            
+            displayAllSales(allSalesData);
+            
+            // Show/hide pagination
+            const pagination = document.getElementById('allSalesPagination');
+            if (data.has_more) {
+                pagination.style.display = 'block';
+                currentPage = page;
+            } else {
+                pagination.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading all sales:', error);
+        const grid = document.getElementById('allSalesGrid');
+        grid.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">❌</div>
+                <h4>Error Loading Sales</h4>
+                <p>Please try again</p>
+            </div>
+        `;
+    }
+}
+
+// Display all sales
+function displayAllSales(sales) {
+    const grid = document.getElementById('allSalesGrid');
+    
+    if (sales.length === 0) {
+        grid.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">🔍</div>
+                <h4>No Sales Found</h4>
+                <p>Try a different search term</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    sales.forEach(sale => {
+        let statusClass = 'status-paid';
+        let statusText = 'Paid';
+        
+        if (sale.payment_status === 'partial') {
+            statusClass = 'status-partial';
+            statusText = 'Partial';
+        } else if (sale.payment_status === 'unpaid') {
+            statusClass = 'status-unpaid';
+            statusText = 'Unpaid';
+        }
+        
+        html += `
+            <div class="sale-card" data-sale-id="${sale.id}" onclick="selectSaleFromAllModal(${sale.id})">
+                <div class="sale-header">
+                    <div class="sale-invoice">${sale.invoice_number}</div>
+                    <span class="sale-date">${sale.formatted_date}</span>
+                </div>
+                
+                <div class="sale-details">
+                    <div class="sale-customer">
+                        ${sale.customer_name || 'Walk-in Customer'}
+                    </div>
+                    <div><strong>Total:</strong> ₦${formatCurrency(sale.total)}</div>
+                    <div><strong>Paid:</strong> ₦${formatCurrency(sale.amount_paid)}</div>
+                    <div><strong>Balance:</strong> ₦${formatCurrency(sale.balance)}</div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    <div class="sale-status ${statusClass}">${statusText}</div>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="selectSaleFromAllModal(${sale.id})">
+                        Select
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    grid.innerHTML = html;
+}
+
+// Select sale from all sales modal
+function selectSaleFromAllModal(saleId) {
+    const sale = allSalesData.find(s => s.id === saleId);
+    if (sale) {
+        closeAllSalesModal();
+        
+        // Get sale details and select it
+        setTimeout(() => {
+            selectSaleFromCard(saleId);
+        }, 300);
+    }
+}
+
+// Load more sales
+function loadMoreSales() {
+    const searchTerm = document.getElementById('allSalesSearch').value;
+    loadAllSales(searchTerm, currentPage + 1);
+}
+
+// =================== FORM SUBMISSION ===================
+
+// Recent sales form submission
+document.getElementById('recentSalesRefundForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    if (!validateRecentAmount()) {
+        showToast('Please enter a valid refund amount', 'error');
+        return;
+    }
+    
+    const reason = document.getElementById('recentRefundReason').value.trim();
+    if (!reason) {
+        showToast('Please provide a reason for the refund', 'error');
+        document.getElementById('recentRefundReason').focus();
+        return;
+    }
+    
+    if (!selectedSale) {
+        showToast('Please select a sale to refund', 'error');
+        return;
+    }
+    
+    // Submit the form
+    const formData = new FormData(this);
+    
+    // Add all required data to form
+    formData.append('sale_id', document.getElementById('recentSaleId').value);
+    formData.append('sale_item_id', document.getElementById('recentSaleItemId').value);
+    formData.append('customer_name', document.getElementById('recentCustomerName').value);
+    formData.append('customer_phone', document.getElementById('recentCustomerPhone').value);
+    formData.append('amount', document.getElementById('recentRefundAmount').value);
+    formData.append('reason', reason);
+    
+    try {
+        const submitBtn = document.getElementById('recentSubmitBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner"></span> Submitting...';
+        
+        const response = await fetch('{% url "create_refund_request" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        if (response.ok) {
+            showToast('Refund request submitted successfully!', 'success');
+            setTimeout(() => {
+                window.location.href = "{% url 'refund_requests_list' %}";
+            }, 1500);
+        } else {
+            const data = await response.json();
+            showToast(data.error || 'Error submitting refund request', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Submit Refund Request';
+        }
+    } catch (error) {
+        console.error('Form submission error:', error);
+        showToast('Network error. Please try again.', 'error');
+        const submitBtn = document.getElementById('recentSubmitBtn');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Submit Refund Request';
+    }
+});
+
+// =================== EVENT LISTENERS ===================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Load initial data for recent sales tab
+    loadRecentSales();
+    loadQuickStats();
+    
+    // All sales search
+    const allSearchInput = document.getElementById('allSalesSearch');
+    if (allSearchInput) {
+        allSearchInput.addEventListener('input', function() {
+            setTimeout(() => {
+                loadAllSales(this.value, 1);
+            }, 500);
+        });
+    }
+    
+    // View all sales button
+    const viewAllBtn = document.getElementById('viewAllSales');
+    if (viewAllBtn) {
+        viewAllBtn.addEventListener('click', openAllSalesModal);
+    }
+    
+    // Recent refund amount validation
+    const recentAmountInput = document.getElementById('recentRefundAmount');
+    if (recentAmountInput) {
+        recentAmountInput.addEventListener('input', validateRecentAmount);
+    }
+    
+    // Close modal when clicking outside
+    const allSalesModal = document.getElementById('allSalesModal');
+    if (allSalesModal) {
+        allSalesModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeAllSalesModal();
             }
         });
     }
     
-    // Form validation
-    const form = document.querySelector('form');
-    form.addEventListener('submit', function(e) {
-        const amount = parseFloat(amountInput.value) || 0;
-        const customerName = customerNameInput.value.trim();
-        const customerPhone = document.querySelector('input[name="customer_phone"]').value.trim();
-        const reason = document.querySelector('textarea[name="reason"]').value.trim();
-        
-        if (!customerName) {
-            e.preventDefault();
-            customerNameInput.focus();
-            return;
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && allSalesModal.style.display === 'flex') {
+            closeAllSalesModal();
         }
-        
-        if (!customerPhone) {
-            e.preventDefault();
-            document.querySelector('input[name="customer_phone"]').focus();
-            return;
-        }
-        
-        if (!reason) {
-            e.preventDefault();
-            document.querySelector('textarea[name="reason"]').focus();
-            return;
-        }
-        
-        if (amount <= 0) {
-            e.preventDefault();
-            amountInput.focus();
-            return;
-        }
-        
-        // Disable submit button to prevent double submission
-        const submitBtn = form.querySelector('button[type="submit"]');
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = 'Processing...';
     });
 });
 </script>

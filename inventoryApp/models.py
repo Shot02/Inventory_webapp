@@ -49,15 +49,15 @@ class Supplier(models.Model):
         return self.name
 
 class Product(models.Model):
-    name = models.CharField(max_length=200)
+    name = models.CharField(max_length=200, default='Unnamed Product')  # Add default
     sku = models.CharField(max_length=50, unique=True, editable=False, blank=True)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True)
     description = models.TextField(blank=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], default=0)
-    quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    reorder_level = models.IntegerField(default=10, validators=[MinValueValidator(0)])
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    quantity = models.IntegerField(default=0)
+    reorder_level = models.IntegerField(default=10)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -71,13 +71,13 @@ class Product(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.sku:
-            # Generate SKU: PRD-XXXXXX (6 random characters)
             self.sku = f"PRD-{uuid.uuid4().hex[:6].upper()}"
-            # Ensure uniqueness
             while Product.objects.filter(sku=self.sku).exists():
                 self.sku = f"PRD-{uuid.uuid4().hex[:6].upper()}"
         
-        # Ensure cost price is not greater than price
+        if not self.name or self.name.strip() == '':
+            self.name = 'Unnamed Product'
+        
         if self.cost_price > self.price:
             self.cost_price = self.price
             
@@ -251,25 +251,129 @@ class RefundRequest(models.Model):
         ('declined', 'Declined'),
     ]
     
+    sale = models.ForeignKey('Sale', on_delete=models.CASCADE, null=True, blank=True, related_name='refund_requests')
+    sale_item = models.ForeignKey('SaleItem', on_delete=models.SET_NULL, null=True, blank=True)
     customer_name = models.CharField(max_length=200)
     customer_phone = models.CharField(max_length=15)
     reason = models.TextField()
     amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    original_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # Original sale item amount
     request_date = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_refunds')
     approved_date = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_refunds')
+    refund_processed = models.BooleanField(default=False)
     
     class Meta:
         db_table = 'refund_requests'
         ordering = ['-request_date']
     
     def __str__(self):
-        return f"Refund #{self.id} - {self.customer_name}"
+        return f"Refund #{self.id} - {self.customer_name} - ₦{self.amount}"
     
     def can_edit(self):
         return self.status == 'pending'
     
     def can_approve_decline(self, user):
         return self.status == 'pending' and (user.role == 'admin' or user.is_superuser)
+    
+    def get_related_sales(self):
+        """Get all sales for this customer"""
+        return Sale.objects.filter(
+            Q(customer_name__iexact=self.customer_name) |
+            Q(customer_phone__iexact=self.customer_phone)
+        ).order_by('-created_at')
+        
+
+class Refund(models.Model):
+    sale = models.ForeignKey(Sale, on_delete=models.SET_NULL, null=True, blank=True, related_name='refunds')
+    refund_request = models.OneToOneField(RefundRequest, on_delete=models.CASCADE, null=True, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    reason = models.TextField()
+    payment_method = models.CharField(max_length=50, choices=[
+        ('cash', 'Cash'),
+        ('card', 'Card'),
+        ('transfer', 'Bank Transfer'),
+        ('refund', 'Refund Adjustment'),
+    ], default='cash')
+    processed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    processed_date = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'refunds'
+        ordering = ['-processed_date']
+    
+    def __str__(self):
+        sale_ref = self.sale.invoice_number if self.sale else "No Sale"
+        return f"Refund #{self.id} - {sale_ref} - ₦{self.amount}"
+    
+    def get_customer_name(self):
+        """Get customer name from sale or refund request"""
+        if self.sale and self.sale.customer_name:
+            return self.sale.customer_name
+        elif self.refund_request:
+            return self.refund_request.customer_name
+        return "Unknown Customer"
+    
+    def get_linked_sale(self):
+        """Get the sale linked to this refund"""
+        if self.sale:
+            return self.sale
+        elif self.refund_request and self.refund_request.sale:
+            return self.refund_request.sale
+        return None
+    
+class UserNotification(models.Model):
+    NOTIFICATION_TYPES = [
+        ('dashboard', 'Dashboard Update'),
+        ('debtors', 'New Debtors'),
+        ('refunds', 'New Refund Requests'),
+        ('sales', 'New Sales'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    message = models.CharField(max_length=255, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    related_id = models.IntegerField(null=True, blank=True)  # ID of related object (sale, refund, etc.)
+    
+    class Meta:
+        db_table = 'user_notifications'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read']),
+            models.Index(fields=['user', 'notification_type', 'is_read']),
+        ]
+    
+    def __str__(self):
+        return f"{self.notification_type} notification for {self.user.username}"
+    
+    @classmethod
+    def mark_as_read(cls, user, notification_type):
+        """Mark all notifications of a type as read for a user"""
+        cls.objects.filter(
+            user=user,
+            notification_type=notification_type,
+            is_read=False
+        ).update(is_read=True, created_at=timezone.now())
+    
+    @classmethod
+    def create_notification(cls, user, notification_type, message='', related_id=None):
+        """Create a new notification for user"""
+        return cls.objects.create(
+            user=user,
+            notification_type=notification_type,
+            message=message,
+            related_id=related_id,
+            is_read=False
+        )
+    
+    @classmethod
+    def get_unread_count(cls, user, notification_type=None):
+        """Get count of unread notifications for user"""
+        query = cls.objects.filter(user=user, is_read=False)
+        if notification_type:
+            query = query.filter(notification_type=notification_type)
+        return query.count()

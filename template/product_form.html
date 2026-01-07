@@ -49,9 +49,15 @@
         }
     }
     
-    .required::after {
-        content: " *";
-        color: #dc3545;
+    .optional-badge {
+        display: inline-block;
+        background: #e5e7eb;
+        color: #6b7280;
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        margin-left: 0.3rem;
+        font-weight: normal;
     }
     
     .form-actions {
@@ -76,12 +82,38 @@
         padding-bottom: 0.5rem;
         border-bottom: 2px solid #f0f0f0;
     }
+    
+    .field-hint {
+        font-size: 0.8rem;
+        color: #666;
+        margin-top: 0.2rem;
+        display: block;
+    }
+    
+    .info-box {
+        background: #f0f9ff;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid #3b82f6;
+    }
+    
+    .info-box p {
+        margin: 0;
+        color: #1e40af;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="form-container">
     <h1 style="margin-bottom: 2rem;">{{ action }} Product</h1>
+
+    <div class="info-box">
+        <p>💡 <strong>Note:</strong> All fields are optional. Empty fields will use default values.</p>
+    </div>
 
     <form method="post" enctype="multipart/form-data" id="productForm">
         {% csrf_token %}
@@ -102,10 +134,14 @@
             
             <div class="form-grid">
                 <div class="form-group">
-                    <label class="required">Product Name</label>
+                    <label>
+                        Product Name 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="text" name="name" class="form-control" 
                            value="{{ product.name|default:'' }}" 
-                           placeholder="Enter product name" required>
+                           placeholder="Product name (optional)">
+                    <span class="field-hint">Defaults to "Unnamed Product" if empty</span>
                 </div>
                 
                 <div class="form-group">
@@ -113,14 +149,17 @@
                     <input type="text" class="form-control" 
                            value="{{ product.sku|default:'Auto-generated' }}" 
                            readonly style="background: #f8f9fa;">
-                    <small class="text-muted">SKU is auto-generated</small>
+                    <span class="field-hint">Auto-generated, cannot be changed</span>
                 </div>
             </div>
             
             <div class="form-group">
-                <label>Description</label>
+                <label>
+                    Description 
+                    <span class="optional-badge">optional</span>
+                </label>
                 <textarea name="description" class="form-control" rows="3"
-                          placeholder="Enter product description">{{ product.description|default:'' }}</textarea>
+                          placeholder="Product description (optional)">{{ product.description|default:'' }}</textarea>
             </div>
         </div>
         
@@ -130,9 +169,12 @@
             
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Category</label>
+                    <label>
+                        Category 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <select name="category" class="form-control" id="categorySelect">
-                        <option value="">-- Select Category --</option>
+                        <option value="">-- Select Category (optional) --</option>
                         {% for category in categories %}
                         <option value="{{ category.id }}" 
                                 {% if product.category.id == category.id %}selected{% endif %}>
@@ -142,14 +184,17 @@
                     </select>
                     <div style="margin-top: 0.5rem;">
                         <input type="text" name="new_category" class="form-control" 
-                               id="newCategoryInput" placeholder="Or enter new category name">
+                               id="newCategoryInput" placeholder="Or enter new category name (optional)">
                     </div>
                 </div>
                 
                 <div class="form-group">
-                    <label>Supplier</label>
+                    <label>
+                        Supplier 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <select name="supplier" class="form-control" id="supplierSelect">
-                        <option value="">-- Select Supplier --</option>
+                        <option value="">-- Select Supplier (optional) --</option>
                         {% for supplier in suppliers %}
                         <option value="{{ supplier.id }}" 
                                 {% if product.supplier.id == supplier.id %}selected{% endif %}>
@@ -159,7 +204,7 @@
                     </select>
                     <div style="margin-top: 0.5rem;">
                         <input type="text" name="new_supplier" class="form-control" 
-                               id="newSupplierInput" placeholder="Or enter new supplier name">
+                               id="newSupplierInput" placeholder="Or enter new supplier name (optional)">
                     </div>
                 </div>
             </div>
@@ -171,36 +216,51 @@
             
             <div class="form-grid">
                 <div class="form-group">
-                    <label class="required">Selling Price (₦)</label>
+                    <label>
+                        Selling Price (₦) 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" name="price" class="form-control" 
                            step="0.01" min="0" 
                            value="{{ product.price|default:'' }}" 
-                           placeholder="0.00" required>
+                           placeholder="0.00 (optional)">
+                    <span class="field-hint">Defaults to 0.00 if empty</span>
                 </div>
                 
                 <div class="form-group">
-                    <label>Cost Price (₦)</label>
+                    <label>
+                        Cost Price (₦) 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" name="cost_price" class="form-control" 
                            step="0.01" min="0" 
-                           value="{{ product.cost_price|default:0 }}" 
-                           placeholder="0.00">
+                           value="{{ product.cost_price|default:'' }}" 
+                           placeholder="0.00 (optional)">
+                    <span class="field-hint">Defaults to 0.00 if empty</span>
                 </div>
                 
                 <div class="form-group">
-                    <label class="required">Quantity in Stock</label>
+                    <label>
+                        Quantity in Stock 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" name="quantity" class="form-control" 
                            min="0" 
-                           value="{{ product.quantity|default:0 }}" 
-                           placeholder="0" required>
+                           value="{{ product.quantity|default:'' }}" 
+                           placeholder="0 (optional)">
+                    <span class="field-hint">Defaults to 0 if empty</span>
                 </div>
                 
                 <div class="form-group">
-                    <label>Reorder Level</label>
+                    <label>
+                        Reorder Level 
+                        <span class="optional-badge">optional</span>
+                    </label>
                     <input type="number" name="reorder_level" class="form-control" 
                            min="0" 
-                           value="{{ product.reorder_level|default:10 }}" 
-                           placeholder="10">
-                    <small class="text-muted">Alert when stock reaches this level</small>
+                           value="{{ product.reorder_level|default:'' }}" 
+                           placeholder="10 (optional)">
+                    <span class="field-hint">Defaults to 10 if empty</span>
                 </div>
             </div>
         </div>
@@ -220,11 +280,14 @@
             </div>
             
             <div class="form-group">
-                <label>Upload Image</label>
+                <label>
+                    Upload Image 
+                    <span class="optional-badge">optional</span>
+                </label>
                 <input type="file" name="image" class="form-control" 
                        id="imageInput" accept="image/*" 
                        onchange="previewImage(event)">
-                <small class="text-muted">Supported formats: JPG, PNG, GIF (Max 5MB)</small>
+                <span class="field-hint">Supported formats: JPG, PNG, GIF (Max 5MB)</span>
             </div>
             
             {% if product and product.image %}
@@ -277,6 +340,7 @@ function previewImage(event) {
     }
 }
 
+// Handle category/supplier selection
 document.getElementById('categorySelect').addEventListener('change', function() {
     if (this.value) {
         document.getElementById('newCategoryInput').value = '';
@@ -301,51 +365,58 @@ document.getElementById('newSupplierInput').addEventListener('input', function()
     }
 });
 
+// Remove all validation from form submission
 document.getElementById('productForm').addEventListener('submit', function(e) {
+    // NO VALIDATION - allow completely empty form submission
+    
+    // Get values
     const name = this.querySelector('input[name="name"]').value.trim();
-    const price = parseFloat(this.querySelector('input[name="price"]').value) || 0;
-    const quantity = parseInt(this.querySelector('input[name="quantity"]').value) || 0;
-    const costPrice = parseFloat(this.querySelector('input[name="cost_price"]').value) || 0;
+    const price = this.querySelector('input[name="price"]').value.trim();
+    const quantity = this.querySelector('input[name="quantity"]').value.trim();
+    const costPrice = this.querySelector('input[name="cost_price"]').value.trim();
     
+    // If name is completely empty, set it to empty string (backend will handle default)
     if (!name) {
-        e.preventDefault();
-        this.querySelector('input[name="name"]').focus();
-        return;
+        this.querySelector('input[name="name"]').value = '';
     }
     
-    if (price <= 0) {
-        e.preventDefault();
-        this.querySelector('input[name="price"]').focus();
-        return;
+    // If price is empty, set it to empty string (backend will handle default)
+    if (!price) {
+        this.querySelector('input[name="price"]').value = '';
     }
     
-    if (quantity < 0) {
-        e.preventDefault();
-        this.querySelector('input[name="quantity"]').focus();
-        return;
+    // If quantity is empty, set it to empty string (backend will handle default)
+    if (!quantity) {
+        this.querySelector('input[name="quantity"]').value = '';
     }
     
-    if (costPrice < 0) {
-        e.preventDefault();
-        this.querySelector('input[name="cost_price"]').focus();
-        return;
+    // If cost price is empty, set it to empty string (backend will handle default)
+    if (!costPrice) {
+        this.querySelector('input[name="cost_price"]').value = '';
     }
     
-    if (costPrice > price) {
-        e.preventDefault();
-        return;
-    }
-    
+    // Disable submit button to prevent double submission
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
     submitBtn.innerHTML = 'Processing...';
 });
 
+// Set focus on first field when page loads
 document.addEventListener('DOMContentLoaded', function() {
     const nameInput = document.querySelector('input[name="name"]');
     if (nameInput) {
         nameInput.focus();
     }
+    
+    // Reset form to clear any browser validation
+    const form = document.getElementById('productForm');
+    form.setAttribute('novalidate', 'novalidate');
+    
+    // Remove required attributes if they exist
+    const requiredInputs = form.querySelectorAll('[required]');
+    requiredInputs.forEach(input => {
+        input.removeAttribute('required');
+    });
 });
 </script>
 {% endblock %}

@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
-from django.db.models import Q, Sum, F, Count
+from django.db.models import Q, Sum, F, Count, Subquery, OuterRef
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.contrib import messages
@@ -10,12 +10,11 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 import uuid
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
-# Import your models
 from .models import (
     User, Product, Sale, SaleItem, Payment, Category, 
-    Supplier, StockMovement, PendingCart, SavedCart, RefundRequest
+    Supplier, StockMovement, PendingCart, SavedCart, RefundRequest, Refund, UserNotification
 )
 
 # =================== AUTHENTICATION VIEWS ===================
@@ -85,6 +84,8 @@ def search_products(request):
     
     return JsonResponse({'products': results})
 
+# In your views.py, update the process_sale function:
+
 @login_required
 @csrf_exempt
 def process_sale(request):
@@ -106,26 +107,24 @@ def process_sale(request):
             if not data.get('items'):
                 return JsonResponse({'success': False, 'error': 'No items in cart'})
             
-            # FIX 1: Calculate subtotal WITHOUT subtracting item discounts
-            # Item discounts will be applied separately when creating SaleItem records
             subtotal = sum(
                 Decimal(str(item['price'])) * Decimal(str(item['quantity']))
                 for item in data['items']
             )
             
-            # FIX 2: Calculate total of all item discounts
+            # Calculate total of all item discounts
             item_discounts_total = sum(
                 Decimal(str(item.get('discount', 0)))
                 for item in data['items']
             )
             
-            # FIX 3: Get sale-level discount (this is additional discount at sale level)
-            sale_discount = Decimal(str(data.get('discount', 0)))
+            if 'discount' in data:
+                sale_discount = Decimal(str(data.get('discount', 0)))
+            else:
+                sale_discount = item_discounts_total
             
-            # FIX 4: Calculate total correctly
-            # Total = (Price × Quantity for all items) - Item discounts - Sale discount
-            total = subtotal - item_discounts_total - sale_discount
-            
+            total = subtotal - sale_discount
+
             amount_paid = Decimal(str(data.get('amount_paid', 0)))
             balance = total - amount_paid
             
@@ -160,28 +159,26 @@ def process_sale(request):
                 customer_name=data.get('customer_name', ''),
                 customer_phone=data.get('customer_phone', ''),
                 subtotal=subtotal,
-                discount=sale_discount,  # This is sale-level discount
+                discount=sale_discount,  
                 total=total,
                 amount_paid=amount_paid,
                 balance=balance,
                 payment_status=payment_status
             )
             
-            # Create sale items and update stock
+            # Create sale items
             for item in data.get('items', []):
                 product = Product.objects.get(id=item['product_id'])
-                
-                # FIX 5: Calculate item total (price * quantity - item discount)
+
                 item_total = (Decimal(str(item['price'])) * Decimal(str(item['quantity']))) - Decimal(str(item.get('discount', 0)))
                 
-                # Create sale item with item-level discount
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
                     product_name=product.name,
                     quantity=item['quantity'],
                     price=item['price'],
-                    discount=item.get('discount', 0),  # Item-level discount
+                    discount=item.get('discount', 0), 
                     total=item_total
                 )
                 
@@ -210,13 +207,37 @@ def process_sale(request):
                     created_by=request.user
                 )
             
-
+            # Clear pending cart
             PendingCart.objects.filter(staff=request.user).delete()
+            
+            # Delete saved cart if it was loaded
             if saved_cart:
                 saved_cart.delete()
                 cart_deleted = True
             else:
                 cart_deleted = False
+            
+            # Create notifications after successful sale
+            # Sales notification for the user who made the sale
+            UserNotification.create_notification(
+                user=request.user,
+                notification_type='sales',
+                message=f'New sale: {invoice_number} - ₦{total:,.2f}',
+                related_id=sale.id
+            )
+            
+            # Dashboard notification for admin users
+            # FIX: Use your custom User model, not Django's default
+            from .models import User  # Import your custom User model
+            admins = User.objects.filter(role='admin') | User.objects.filter(is_superuser=True)
+            for admin in admins:
+                if admin != request.user:  # Don't notify the user who made the sale
+                    UserNotification.create_notification(
+                        user=admin,
+                        notification_type='dashboard',
+                        message=f'New sale by {request.user.username}: {invoice_number}',
+                        related_id=sale.id
+                    )
             
             return JsonResponse({
                 'success': True,
@@ -229,15 +250,23 @@ def process_sale(request):
             })
             
         except Exception as e:
+            import traceback
+            print(f"Error processing sale: {str(e)}")
+            print(traceback.format_exc())
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
 
 @login_required
 def view_receipt(request, sale_id):
     sale = get_object_or_404(Sale, id=sale_id)
     items = sale.items.all()
     payments = sale.payments.all()
+    
+    # Calculate total item discounts
+    item_discounts_total = sum(item.discount for item in items)
+    total_discount = item_discounts_total + sale.discount
     
     # Get payment method from latest payment
     payment_method = payments.last().payment_method if payments.exists() else 'cash'
@@ -246,7 +275,9 @@ def view_receipt(request, sale_id):
         'sale': sale,
         'items': items,
         'payments': payments,
-        'payment_method': payment_method
+        'payment_method': payment_method,
+        'item_discounts_total': item_discounts_total,
+        'total_discount': total_discount,  # Total of all discounts
     }
     return render(request, 'receipt.html', context)
 
@@ -289,7 +320,7 @@ def admin_dashboard(request):
             start_date = today
             end_date = today + timedelta(days=1)
     
-    # Statistics - FIXED calculations
+    # Statistics
     total_products = Product.objects.count()
     
     # Total sales count (only completed sales)
@@ -309,7 +340,7 @@ def admin_dashboard(request):
         created_at__range=[start_date, end_date]
     ).count()
     
-    # Payment statistics - FIXED: Use payment dates, not sale dates
+    # Payment statistics - INCLUDE REFUNDS (negative payments)
     cash_payments = Payment.objects.filter(
         payment_method='cash',
         created_at__range=[start_date, end_date]
@@ -325,10 +356,20 @@ def admin_dashboard(request):
         created_at__range=[start_date, end_date]
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
     
-    # Total revenue - FIXED: Only count actual payments received
-    total_revenue = Payment.objects.filter(
+    # Total refunds (negative payments with payment_method='refund')
+    total_refunds = Payment.objects.filter(
+        payment_method='refund',
         created_at__range=[start_date, end_date]
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
+    # Total revenue - ACTUAL revenue after refunds
+    # Sum all payments (including negative refunds)
+    total_payments = Payment.objects.filter(
+        created_at__range=[start_date, end_date]
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
+    # Make sure revenue is not negative
+    total_revenue = max(total_payments, Decimal('0.00'))
     
     # Recent sales with search and limit
     recent_sales = Sale.objects.filter(
@@ -362,6 +403,14 @@ def admin_dashboard(request):
     else:
         low_stock = low_stock[:50]
     
+    # Pending refund requests count
+    pending_refunds = RefundRequest.objects.filter(status='pending').count()
+    
+    # Today's refunds
+    today_refunds = Refund.objects.filter(
+        processed_date__date=today
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
     context = {
         'date_filter': date_filter,
         'start_date': start_date,
@@ -374,15 +423,21 @@ def admin_dashboard(request):
         'cash_payments': cash_payments,
         'transfer_payments': transfer_payments,
         'card_payments': card_payments,
+        'total_refunds': abs(total_refunds),  # Absolute value for display
         'total_revenue': total_revenue,
         'recent_sales': recent_sales,
         'low_stock': low_stock,
         'sales_search': sales_search,
         'stock_search': stock_search,
+        'pending_refunds': pending_refunds,
+        'today_refunds': today_refunds,
     }
     
+    # Mark dashboard notifications as read
+    if request.user.is_authenticated:
+        UserNotification.mark_as_read(request.user, 'dashboard')
+    
     return render(request, 'admin_dashboard.html', context)
-
 # =================== PRODUCT VIEWS ===================
 @login_required
 def product_list(request):
@@ -413,44 +468,64 @@ def product_list(request):
 def add_product(request):
     if request.method == 'POST':
         try:
-            # Get form data
-            name = request.POST.get('name')
+            name = request.POST.get('name', 'Unnamed Product')
             category_id = request.POST.get('category')
             supplier_id = request.POST.get('supplier')
             description = request.POST.get('description', '')
             price = request.POST.get('price')
-            cost_price = request.POST.get('cost_price', 0)
-            quantity = request.POST.get('quantity', 0)
-            reorder_level = request.POST.get('reorder_level', 10)
+            cost_price = request.POST.get('cost_price')
+            quantity = request.POST.get('quantity')
+            reorder_level = request.POST.get('reorder_level')
             image = request.FILES.get('image')
-            
-            # Validate required fields
-            if not name or not price:
-                messages.error(request, 'Name and price are required')
-                return redirect('add_product')
-            
-            # Get category and supplier
+
+
             category = None
             if category_id:
-                category = Category.objects.get(id=category_id)
+                try:
+                    category = Category.objects.get(id=category_id)
+                except (Category.DoesNotExist, ValueError):
+                    pass
             
             supplier = None
             if supplier_id:
-                supplier = Supplier.objects.get(id=supplier_id)
+                try:
+                    supplier = Supplier.objects.get(id=supplier_id)
+                except (Supplier.DoesNotExist, ValueError):
+                    pass
             
-            # Create product
+            try:
+                price_decimal = Decimal(price) if price else Decimal('0.00')
+            except (InvalidOperation, TypeError, ValueError):
+                price_decimal = Decimal('0.00')
+            
+            try:
+                cost_price_decimal = Decimal(cost_price) if cost_price else Decimal('0.00')
+            except (InvalidOperation, TypeError, ValueError):
+                cost_price_decimal = Decimal('0.00')
+            
+            try:
+                quantity_int = int(quantity) if quantity else 0
+            except ValueError:
+                quantity_int = 0
+            
+            try:
+                reorder_level_int = int(reorder_level) if reorder_level else 10
+            except ValueError:
+                reorder_level_int = 10
+            
+            # Create product with all fields - ALL optional
             product = Product.objects.create(
                 name=name,
                 category=category,
                 supplier=supplier,
                 description=description,
-                price=price,
-                cost_price=cost_price,
-                quantity=quantity,
-                reorder_level=reorder_level,
+                price=price_decimal,
+                cost_price=cost_price_decimal,
+                quantity=quantity_int,
+                reorder_level=reorder_level_int,
             )
             
-            # Handle image separately to avoid issues
+            # Handle image if provided
             if image:
                 product.image = image
                 product.save()
@@ -478,7 +553,7 @@ def edit_product(request, pk):
     if request.method == 'POST':
         try:
             # Update basic fields
-            product.name = request.POST.get('name')
+            product.name = request.POST.get('name', 'Unnamed Product')
             product.description = request.POST.get('description', '')
             
             # Handle category
@@ -491,7 +566,7 @@ def edit_product(request, pk):
             elif category_id:
                 try:
                     product.category = Category.objects.get(id=category_id)
-                except Category.DoesNotExist:
+                except (Category.DoesNotExist, ValueError):
                     product.category = None
             else:
                 product.category = None
@@ -506,16 +581,35 @@ def edit_product(request, pk):
             elif supplier_id:
                 try:
                     product.supplier = Supplier.objects.get(id=supplier_id)
-                except Supplier.DoesNotExist:
+                except (Supplier.DoesNotExist, ValueError):
                     product.supplier = None
             else:
                 product.supplier = None
             
-            # Update numeric fields
-            product.price = Decimal(request.POST.get('price'))
-            product.cost_price = Decimal(request.POST.get('cost_price', 0))
-            product.quantity = int(request.POST.get('quantity', 0))
-            product.reorder_level = int(request.POST.get('reorder_level', 10))
+            # Update numeric fields with safe defaults
+            try:
+                price_val = request.POST.get('price')
+                product.price = Decimal(price_val) if price_val else Decimal('0.00')
+            except (InvalidOperation, TypeError, ValueError):
+                product.price = Decimal('0.00')
+            
+            try:
+                cost_price_val = request.POST.get('cost_price')
+                product.cost_price = Decimal(cost_price_val) if cost_price_val else Decimal('0.00')
+            except (InvalidOperation, TypeError, ValueError):
+                product.cost_price = Decimal('0.00')
+            
+            try:
+                quantity_val = request.POST.get('quantity')
+                product.quantity = int(quantity_val) if quantity_val else 0
+            except ValueError:
+                product.quantity = 0
+            
+            try:
+                reorder_val = request.POST.get('reorder_level')
+                product.reorder_level = int(reorder_val) if reorder_val else 10
+            except ValueError:
+                product.reorder_level = 10
             
             # Handle image upload
             if 'image' in request.FILES:
@@ -633,6 +727,30 @@ def record_payment(request, sale_id):
                 sale.payment_status = 'partial'
             
             sale.save()
+            
+            # Create debtor notification for admin users
+            if sale.balance > 0:  # Still has balance after payment
+                UserNotification.create_notification(
+                    user=request.user,
+                    notification_type='debtors',
+                    message=f'Partial payment on {sale.invoice_number} - Balance: ₦{sale.balance:,.2f}',
+                    related_id=sale.id
+                )
+            else:  # Fully paid
+                # Mark debtor notifications as read since debt is cleared
+                UserNotification.mark_as_read(request.user, 'debtors')
+            
+            # Create dashboard notification for admin users
+            from django.contrib.auth.models import User
+            admins = User.objects.filter(role='admin') | User.objects.filter(is_superuser=True)
+            for admin in admins:
+                if admin != request.user:
+                    UserNotification.create_notification(
+                        user=admin,
+                        notification_type='dashboard',
+                        message=f'Payment recorded by {request.user.username} on {sale.invoice_number}',
+                        related_id=sale.id
+                    )
             
             messages.success(request, f'Payment of ₦{amount:,.2f} recorded successfully!')
             return redirect('debtors_list')
@@ -924,7 +1042,7 @@ def staff_list(request):
         messages.error(request, 'Only admins can view staff list')
         return redirect('home')
     
-    staff = User.objects.filter(is_staff=True).exclude(id=request.user.id).order_by('-date_joined')
+    staff = User.objects.filter(is_staff=True).order_by('-date_joined')
     
     search_query = request.GET.get('search', '')
     if search_query:
@@ -955,6 +1073,10 @@ def edit_staff(request):
             user_id = request.POST.get('user_id')
             user = User.objects.get(id=user_id)
             
+            # Don't allow editing the currently logged-in user's role or status
+            if user == request.user:
+                return JsonResponse({'success': False, 'error': 'You cannot edit your own account through this interface'})
+            
             # Update user fields
             user.username = request.POST.get('username')
             user.email = request.POST.get('email')
@@ -962,11 +1084,16 @@ def edit_staff(request):
             user.last_name = request.POST.get('last_name', '')
             user.phone = request.POST.get('phone', '')
             user.role = request.POST.get('role', 'staff')
-            user.is_active = request.POST.get('is_active') == 'true'
             
-            # Save password only if provided
+            # CRITICAL FIX: Ensure is_active is properly handled
+            is_active = request.POST.get('is_active')
+            if is_active is not None:
+                user.is_active = is_active == 'true'
+            else:
+                user.is_active = True
+            
             password = request.POST.get('password')
-            if password:
+            if password and password.strip(): 
                 user.set_password(password)
             
             user.save()
@@ -980,47 +1107,327 @@ def edit_staff(request):
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
-# =================== REFUND VIEWS ===================
 @login_required
-def refund_requests_list(request):
+@csrf_exempt
+def delete_staff(request, pk):
+    if not request.user.role == 'admin' and not request.user.is_superuser:
+        messages.error(request, 'Only admins can delete staff')
+        return redirect('staff_list')
+    
+    if request.method == 'POST':
+        try:
+            staff_member = get_object_or_404(User, id=pk)
+            
+            # Don't allow deleting yourself
+            if staff_member == request.user:
+                messages.error(request, 'You cannot delete your own account')
+                return redirect('staff_list')
+            
+            username = staff_member.username
+            staff_member.delete()
+            
+            messages.success(request, f'Staff member "{username}" deleted successfully!')
+            return redirect('staff_list')
+            
+        except Exception as e:
+            messages.error(request, f'Error deleting staff: {str(e)}')
+    
+    return redirect('staff_list')
+
+
+# =================== REFUND VIEWS ===================
+
+@login_required
+def refund_list(request):
+    """List of processed refunds"""
+    # Mark refund notifications as read when visiting this page
+    if request.user.is_authenticated:
+        UserNotification.mark_as_read(request.user, 'refunds')
+    
     if request.user.role == 'admin' or request.user.is_superuser:
-        refunds = RefundRequest.objects.all().select_related('created_by', 'approved_by').order_by('-request_date')
+        refunds = Refund.objects.all().select_related(
+            'sale', 'processed_by', 'refund_request', 'refund_request__created_by'
+        ).order_by('-processed_date')
     else:
-        refunds = RefundRequest.objects.filter(created_by=request.user).order_by('-request_date')
+        refunds = Refund.objects.filter(
+            refund_request__created_by=request.user
+        ).select_related(
+            'sale', 'processed_by', 'refund_request', 'refund_request__created_by'
+        ).order_by('-processed_date')
     
     context = {
         'refunds': refunds,
     }
+    return render(request, 'refund_list.html', context)
+
+@login_required
+def refund_requests_list(request):
+    """List of all refund requests"""
+    # Mark refund notifications as read when visiting this page
+    if request.user.is_authenticated:
+        UserNotification.mark_as_read(request.user, 'refunds')
+    
+    if request.user.role == 'admin' or request.user.is_superuser:
+        refunds = RefundRequest.objects.all().select_related('sale', 'created_by', 'approved_by').order_by('-request_date')
+    else:
+        refunds = RefundRequest.objects.filter(created_by=request.user).select_related('sale', 'created_by', 'approved_by').order_by('-request_date')
+    
+    # Calculate statistics
+    pending_count = refunds.filter(status='pending').count()
+    approved_count = refunds.filter(status='approved').count()
+    declined_count = refunds.filter(status='declined').count()
+    total_count = refunds.count()
+    
+    context = {
+        'refunds': refunds,
+        'pending_count': pending_count,
+        'approved_count': approved_count,
+        'declined_count': declined_count,
+        'total_count': total_count,
+    }
     return render(request, 'refund_requests_list.html', context)
+
+# Add this view to your views.py
+@login_required
+def refund_details_api(request, pk):
+    """API endpoint to get refund details"""
+    try:
+        refund = RefundRequest.objects.get(id=pk)
+        
+        # Check if user can view this refund
+        if not (refund.created_by == request.user or request.user.role == 'admin' or request.user.is_superuser):
+            return JsonResponse({'success': False, 'error': 'Access denied'})
+        
+        refund_data = {
+            'id': refund.id,
+            'customer_name': refund.customer_name,
+            'customer_phone': refund.customer_phone,
+            'reason': refund.reason,
+            'amount': float(refund.amount),
+            'status': refund.status,
+            'request_date': refund.request_date.isoformat(),
+            'sale_invoice': refund.sale.invoice_number if refund.sale else None,
+            'approved_by': refund.approved_by.get_full_name() if refund.approved_by else None,
+            'approved_date': refund.approved_date.isoformat() if refund.approved_date else None,
+            'created_by': refund.created_by.get_full_name() or refund.created_by.username,
+        }
+        
+        return JsonResponse({'success': True, 'refund': refund_data})
+        
+    except RefundRequest.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Refund not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
 
 @login_required
 def create_refund_request(request):
+    """Create new refund request with transaction selection - FIXED VERSION"""
     if request.method == 'POST':
         try:
-            customer_name = request.POST.get('customer_name')
-            customer_phone = request.POST.get('customer_phone')
-            reason = request.POST.get('reason')
-            amount = request.POST.get('amount')
+            # Get form data
+            customer_name = request.POST.get('customer_name', '').strip()
+            customer_phone = request.POST.get('customer_phone', '').strip()
+            reason = request.POST.get('reason', '').strip()
+            sale_id = request.POST.get('sale_id')
+            sale_item_id = request.POST.get('sale_item_id')
+            amount = request.POST.get('amount', '0').strip()
+            refund_method = request.POST.get('refund_method', '')
             
-            refund = RefundRequest.objects.create(
-                customer_name=customer_name,
-                customer_phone=customer_phone,
+            print(f"DEBUG - Form data received:")
+            print(f"  customer_name: {customer_name}")
+            print(f"  customer_phone: {customer_phone}")
+            print(f"  reason: {reason}")
+            print(f"  sale_id: {sale_id}")
+            print(f"  sale_item_id: {sale_item_id}")
+            print(f"  amount: {amount}")
+            print(f"  refund_method: {refund_method}")
+            
+            # Validate required fields
+            if not reason or not amount:
+                messages.error(request, 'Reason and amount are required')
+                return redirect('create_refund_request')
+            
+            # Parse amount
+            try:
+                refund_amount = Decimal(amount)
+                if refund_amount <= 0:
+                    messages.error(request, 'Refund amount must be greater than 0')
+                    return redirect('create_refund_request')
+            except (InvalidOperation, ValueError):
+                messages.error(request, 'Invalid refund amount')
+                return redirect('create_refund_request')
+            
+            # Find or validate sale
+            selected_sale = None
+            selected_item = None
+            
+            if sale_id and sale_id != '':
+                try:
+                    selected_sale = Sale.objects.get(id=sale_id)
+                    
+                    # If sale item is specified
+                    if sale_item_id and sale_item_id != '':
+                        try:
+                            selected_item = SaleItem.objects.get(id=sale_item_id, sale=selected_sale)
+                            # Validate refund amount against item total
+                            max_refund = selected_item.total
+                            if refund_amount > max_refund:
+                                messages.error(request, f'Refund amount cannot exceed item total (₦{max_refund:,.2f})')
+                                return redirect('create_refund_request')
+                        except SaleItem.DoesNotExist:
+                            messages.error(request, 'Selected item not found')
+                            return redirect('create_refund_request')
+                    else:
+                        # Validate against sale amount paid
+                        max_refund = selected_sale.amount_paid
+                        if refund_amount > max_refund:
+                            messages.error(request, f'Refund amount cannot exceed paid amount (₦{max_refund:,.2f})')
+                            return redirect('create_refund_request')
+                    
+                except Sale.DoesNotExist:
+                    messages.error(request, 'Selected sale not found')
+                    return redirect('create_refund_request')
+            else:
+                # If no sale selected, we need customer info
+                if not customer_name or not customer_phone:
+                    messages.error(request, 'Customer name and phone are required when no sale is selected')
+                    return redirect('create_refund_request')
+                
+                # Find customer sales
+                customer_sales = Sale.objects.filter(
+                    Q(customer_name__iexact=customer_name) |
+                    Q(customer_phone__iexact=customer_phone)
+                ).order_by('-created_at')
+                
+                if not customer_sales.exists():
+                    messages.error(request, f'No sales found for customer: {customer_name}')
+                    return redirect('create_refund_request')
+                
+                # Use the most recent sale with sufficient paid amount
+                for sale in customer_sales:
+                    if sale.amount_paid >= refund_amount:
+                        selected_sale = sale
+                        break
+                
+                if not selected_sale:
+                    messages.error(request, f'No sale found with sufficient paid amount for refund of ₦{refund_amount:,.2f}')
+                    return redirect('create_refund_request')
+            
+            # Create refund request
+            refund_request = RefundRequest.objects.create(
+                customer_name=customer_name if customer_name else (selected_sale.customer_name or 'Unknown Customer'),
+                customer_phone=customer_phone if customer_phone else (selected_sale.customer_phone or ''),
                 reason=reason,
-                amount=amount,
+                amount=refund_amount,
+                sale=selected_sale,
+                sale_item=selected_item,
                 created_by=request.user
             )
             
-            messages.success(request, 'Refund request created successfully!')
+            # Set original amount
+            if selected_item:
+                refund_request.original_amount = selected_item.total
+            elif selected_sale:
+                refund_request.original_amount = selected_sale.amount_paid
+            refund_request.save()
+            
+            # Create refund notification for admin users
+            from django.contrib.auth.models import User
+            admins = User.objects.filter(Q(role='admin') | Q(is_superuser=True)).distinct()
+            for admin in admins:
+                if admin != request.user:  # Don't notify yourself if you're an admin
+                    UserNotification.create_notification(
+                        user=admin,
+                        notification_type='refunds',
+                        message=f'New refund request: {refund_request.customer_name} - ₦{refund_request.amount:,.2f}',
+                        related_id=refund_request.id
+                    )
+            
+            # Also notify the user who created the request
+            UserNotification.create_notification(
+                user=request.user,
+                notification_type='refunds',
+                message=f'Your refund request #{refund_request.id} has been submitted for approval',
+                related_id=refund_request.id
+            )
+            
+            messages.success(request, f'Refund request #{refund_request.id} created successfully! Pending admin approval.')
             return redirect('refund_requests_list')
             
         except Exception as e:
+            print(f"DEBUG - Error creating refund request: {str(e)}")
             messages.error(request, f'Error creating refund request: {str(e)}')
+            return redirect('create_refund_request')
     
-    return render(request, 'refund_request_form.html')
+    # GET request - show form
+    context = {
+        'action': 'Create',
+    }
+    return render(request, 'refund_request_form.html', context)
+
+
+@login_required
+@csrf_exempt
+def get_customer_sales(request):
+    """API endpoint to get ALL customer sales (both paid and debt)"""
+    if request.method == 'GET':
+        customer_name = request.GET.get('customer_name', '').strip()
+        customer_phone = request.GET.get('customer_phone', '').strip()
+        
+        if not customer_name and not customer_phone:
+            return JsonResponse({'success': False, 'error': 'Customer name or phone required'})
+        
+        # Find ALL customer sales including both paid and debt transactions
+        sales = Sale.objects.filter(
+            Q(customer_name__iexact=customer_name) |
+            Q(customer_phone__iexact=customer_phone)
+        ).select_related('staff').prefetch_related('items').order_by('-created_at')  # Last transaction first
+        
+        sales_data = []
+        for sale in sales:
+            items_data = []
+            for item in sale.items.all():
+                items_data.append({
+                    'id': item.id,
+                    'name': item.product_name,
+                    'quantity': item.quantity,
+                    'price': float(item.price),
+                    'discount': float(item.discount),
+                    'total': float(item.total),
+                    'max_refund': min(float(item.total), float(sale.amount_paid)),  # Can't refund more than paid
+                })
+            
+            # Calculate maximum refundable amount for the entire sale
+            max_sale_refund = min(float(sale.amount_paid), float(sale.total))
+            
+            sales_data.append({
+                'id': sale.id,
+                'invoice_number': sale.invoice_number,
+                'date': sale.created_at.strftime('%Y-%m-%d %H:%M'),
+                'total': float(sale.total),
+                'paid': float(sale.amount_paid),
+                'balance': float(sale.balance),
+                'payment_status': sale.payment_status,
+                'max_refund': max_sale_refund,
+                'items': items_data,
+                'has_balance': sale.balance > 0,
+                'is_fully_paid': sale.payment_status == 'paid',
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'sales': sales_data,
+            'count': len(sales_data),
+            'message': f'Found {len(sales_data)} transaction(s) for this customer'
+        })
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @login_required
 @csrf_exempt
 def edit_refund_request(request, pk):
+    """Edit refund request"""
     refund = get_object_or_404(RefundRequest, id=pk)
     
     # Check if user can edit
@@ -1032,7 +1439,17 @@ def edit_refund_request(request, pk):
             refund.customer_name = request.POST.get('customer_name')
             refund.customer_phone = request.POST.get('customer_phone')
             refund.reason = request.POST.get('reason')
-            refund.amount = Decimal(request.POST.get('amount'))
+            
+            # Update amount with validation
+            new_amount = Decimal(request.POST.get('amount'))
+            
+            # Validate against original amount
+            if refund.sale_item and new_amount > refund.sale_item.total:
+                return JsonResponse({'success': False, 'error': f'Amount cannot exceed item total (₦{refund.sale_item.total:,.2f})'})
+            elif refund.sale and new_amount > refund.sale.total:
+                return JsonResponse({'success': False, 'error': f'Amount cannot exceed sale total (₦{refund.sale.total:,.2f})'})
+            
+            refund.amount = new_amount
             refund.save()
             
             return JsonResponse({'success': True})
@@ -1045,43 +1462,160 @@ def edit_refund_request(request, pk):
 @login_required
 @csrf_exempt
 def approve_refund_request(request, pk):
+    """Approve and process refund request - Update revenue calculations"""
     if request.method == 'POST':
         try:
-            refund = RefundRequest.objects.get(id=pk)
-            
-            if not refund.can_approve_decline(request.user):
-                messages.error(request, 'You are not authorized to approve refunds')
+            if not (request.user.role == 'admin' or request.user.is_superuser):
+                messages.error(request, 'Only admins can approve refunds')
                 return redirect('refund_requests_list')
             
-            refund.status = 'approved'
-            refund.approved_by = request.user
-            refund.approved_date = timezone.now()
-            refund.save()
+            refund_request = RefundRequest.objects.get(id=pk)
             
-            messages.success(request, 'Refund request approved successfully!')
+            if refund_request.status != 'pending':
+                messages.error(request, 'This refund request has already been processed')
+                return redirect('refund_requests_list')
+            
+            if refund_request.refund_processed:
+                messages.error(request, 'This refund has already been processed')
+                return redirect('refund_requests_list')
+            
+            # Find the related sale - prioritize the sale linked in the request
+            sale = None
+            if refund_request.sale:
+                sale = refund_request.sale
+            else:
+                # Find sale by customer info - get the most recent one with sufficient paid amount
+                sales = Sale.objects.filter(
+                    Q(customer_name__iexact=refund_request.customer_name) |
+                    Q(customer_phone__iexact=refund_request.customer_phone)
+                ).filter(amount_paid__gte=refund_request.amount).order_by('-created_at')
+                
+                if not sales.exists():
+                    # Try without amount filter
+                    sales = Sale.objects.filter(
+                        Q(customer_name__iexact=refund_request.customer_name) |
+                        Q(customer_phone__iexact=refund_request.customer_phone)
+                    ).order_by('-created_at')
+                    
+                    if not sales.exists():
+                        messages.error(request, f'No matching sale found for customer: {refund_request.customer_name}')
+                        return redirect('refund_requests_list')
+                
+                sale = sales.first()
+            
+            # Double-check if sale has sufficient amount paid
+            if sale.amount_paid < refund_request.amount:
+                messages.error(request, f'Sale has insufficient paid amount (₦{sale.amount_paid:,.2f}) for refund of ₦{refund_request.amount:,.2f}')
+                return redirect('refund_requests_list')
+            
+            # Create refund record - ALWAYS link to a sale
+            refund = Refund.objects.create(
+                sale=sale,
+                refund_request=refund_request,
+                amount=refund_request.amount,
+                reason=refund_request.reason,
+                payment_method='refund',  # Use 'refund' as payment method for tracking
+                processed_by=request.user
+            )
+            
+            # IMPORTANT: Update the sale linked to the refund request
+            refund_request.sale = sale
+            refund_request.save()
+            
+            # Deduct from sale amount paid and update balance
+            sale.amount_paid -= refund_request.amount
+            sale.balance = sale.total - sale.amount_paid
+            
+            # Update payment status based on new balance
+            if sale.balance <= 0:
+                sale.payment_status = 'paid'
+            elif sale.balance < sale.total:
+                sale.payment_status = 'partial'
+            else:
+                sale.payment_status = 'unpaid'
+            
+            sale.save()
+            
+            # Mark refund request as approved and processed
+            refund_request.status = 'approved'
+            refund_request.approved_by = request.user
+            refund_request.approved_date = timezone.now()
+            refund_request.refund_processed = True
+            refund_request.save()
+            
+            # If refund is for a specific item, adjust inventory
+            if refund_request.sale_item:
+                item = refund_request.sale_item
+                if item.product:
+                    product = item.product
+                    # Return quantity to inventory
+                    product.quantity += item.quantity
+                    product.save()
+                    
+                    # Record stock movement
+                    StockMovement.objects.create(
+                        product=product,
+                        movement_type='in',
+                        quantity=item.quantity,
+                        reference=f"REFUND-{refund_request.id}",
+                        notes=f"Refund for {sale.invoice_number} - {refund_request.reason}",
+                        created_by=request.user
+                    )
+            
+            # Create a payment record for the refund (negative amount for revenue tracking)
+            Payment.objects.create(
+                sale=sale,
+                amount=-refund_request.amount,  # Negative amount to deduct from revenue
+                payment_method='refund',
+                reference=f"REFUND-{refund_request.id}",
+                notes=f"Refund processed: {refund_request.reason}",
+                created_by=request.user
+            )
+            
+            # Mark refund notifications as read for the user who approved
+            UserNotification.mark_as_read(request.user, 'refunds')
+            
+            # Create dashboard notification about the refund
+            from django.contrib.auth.models import User
+            admins = User.objects.filter(Q(role='admin') | Q(is_superuser=True)).distinct()
+            for admin in admins:
+                if admin != request.user:
+                    UserNotification.create_notification(
+                        user=admin,
+                        notification_type='dashboard',
+                        message=f'Refund approved by {request.user.username}: ₦{refund_request.amount:,.2f} for {refund_request.customer_name}',
+                        related_id=sale.id
+                    )
+            
+            messages.success(request, f'Refund of ₦{refund_request.amount:,.2f} processed successfully! Revenue has been updated.')
             
         except RefundRequest.DoesNotExist:
             messages.error(request, 'Refund request not found')
         except Exception as e:
-            messages.error(request, f'Error approving refund: {str(e)}')
+            messages.error(request, f'Error processing refund: {str(e)}')
     
     return redirect('refund_requests_list')
 
 @login_required
 @csrf_exempt
 def decline_refund_request(request, pk):
+    """Decline refund request"""
     if request.method == 'POST':
         try:
-            refund = RefundRequest.objects.get(id=pk)
-            
-            if not refund.can_approve_decline(request.user):
-                messages.error(request, 'You are not authorized to decline refunds')
+            if not (request.user.role == 'admin' or request.user.is_superuser):
+                messages.error(request, 'Only admins can decline refunds')
                 return redirect('refund_requests_list')
             
-            refund.status = 'declined'
-            refund.approved_by = request.user
-            refund.approved_date = timezone.now()
-            refund.save()
+            refund_request = RefundRequest.objects.get(id=pk)
+            
+            if refund_request.status != 'pending':
+                messages.error(request, 'This refund request has already been processed')
+                return redirect('refund_requests_list')
+            
+            refund_request.status = 'declined'
+            refund_request.approved_by = request.user
+            refund_request.approved_date = timezone.now()
+            refund_request.save()
             
             messages.success(request, 'Refund request declined')
             
@@ -1091,6 +1625,31 @@ def decline_refund_request(request, pk):
             messages.error(request, f'Error declining refund: {str(e)}')
     
     return redirect('refund_requests_list')
+
+@login_required
+def get_refund_stats(request):
+    """Get refund statistics for dashboard"""
+    today = timezone.now().date()
+    
+    # Today's refunds
+    today_refunds = Refund.objects.filter(processed_date__date=today).aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0.00')
+    
+    # Pending refund requests
+    pending_requests = RefundRequest.objects.filter(status='pending').count()
+    
+    # Total refunds this month
+    month_start = today.replace(day=1)
+    month_refunds = Refund.objects.filter(
+        processed_date__date__gte=month_start
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
+    return JsonResponse({
+        'today_refunds': float(today_refunds),
+        'pending_requests': pending_requests,
+        'month_refunds': float(month_refunds),
+    })
 
 # =================== REAL-TIME SEARCH API VIEWS ===================
 @login_required
@@ -1369,3 +1928,346 @@ def sales_history_api(request):
         'results': results,
         'count': len(results),
     })
+    
+    
+@login_required
+def notification_counts_api(request):
+    """API endpoint to get notification counts"""
+    return JsonResponse({
+        'success': True,
+        'dashboard_count': UserNotification.get_unread_count(request.user, 'dashboard'),
+        'debtors_count': UserNotification.get_unread_count(request.user, 'debtors'),
+        'refunds_count': UserNotification.get_unread_count(request.user, 'refunds'),
+        'sales_count': UserNotification.get_unread_count(request.user, 'sales'),
+        'total_count': UserNotification.get_unread_count(request.user),
+    })
+
+@login_required
+@csrf_exempt
+def mark_notifications_read(request):
+    """Mark notifications as read when user visits a page"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            notification_type = data.get('notification_type')
+            
+            if notification_type in ['dashboard', 'debtors', 'refunds', 'sales']:
+                UserNotification.mark_as_read(request.user, notification_type)
+                return JsonResponse({'success': True})
+            
+            return JsonResponse({'success': False, 'error': 'Invalid notification type'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+# =================== NEW API VIEWS FOR RECENT SALES ===================
+
+@login_required
+def recent_sales_stats_api(request):
+    """Get statistics for recent sales"""
+    today = timezone.now().date()
+    week_ago = today - timedelta(days=7)
+    
+    # Today's sales count
+    today_sales = Sale.objects.filter(created_at__date=today).count()
+    
+    # Last 7 days sales count
+    week_sales = Sale.objects.filter(created_at__date__gte=week_ago).count()
+    
+    # Current staff's sales today
+    staff_sales = Sale.objects.filter(
+        staff=request.user,
+        created_at__date=today
+    ).count()
+    
+    return JsonResponse({
+        'success': True,
+        'today_count': today_sales,
+        'week_count': week_sales,
+        'staff_count': staff_sales,
+    })
+
+@login_required
+def recent_sales_api(request):
+    """Get recent sales (last 24 hours)"""
+    yesterday = timezone.now() - timedelta(days=1)
+    
+    sales = Sale.objects.filter(
+        created_at__gte=yesterday
+    ).select_related('staff').prefetch_related('items').order_by('-created_at')[:10]
+    
+    sales_data = []
+    for sale in sales:
+        items_data = []
+        for item in sale.items.all():
+            items_data.append({
+                'id': item.id,
+                'name': item.product_name,
+                'quantity': item.quantity,
+                'price': float(item.price),
+                'discount': float(item.discount),
+                'total': float(item.total),
+            })
+        
+        sales_data.append({
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name,
+            'customer_phone': sale.customer_phone,
+            'staff_name': sale.staff.username,
+            'total': float(sale.total),
+            'amount_paid': float(sale.amount_paid),
+            'balance': float(sale.balance),
+            'payment_status': sale.payment_status,
+            'created_at': sale.created_at.isoformat(),
+            'formatted_date': sale.created_at.strftime('%b %d, %I:%M %p'),
+            'items': items_data,
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'sales': sales_data,
+        'count': len(sales_data),
+    })
+
+@login_required
+def search_recent_sales_api(request):
+    """Search recent sales with flexible search terms"""
+    search_term = request.GET.get('q', '').strip()
+    yesterday = timezone.now() - timedelta(hours=24)
+    
+    # Start with recent sales
+    sales = Sale.objects.filter(
+        created_at__gte=yesterday
+    ).select_related('staff').order_by('-created_at')
+    
+    if search_term:
+        # Clean the search term
+        search_term = search_term.lower()
+        
+        # Check if it's an invoice number (case-insensitive)
+        if 'inv-' in search_term.lower():
+            sales = sales.filter(invoice_number__icontains=search_term.upper())
+        
+        # Check if it's a date keyword
+        elif search_term in ['today', 'now']:
+            today = timezone.now().date()
+            sales = sales.filter(created_at__date=today)
+        
+        elif search_term == 'yesterday':
+            yesterday_date = timezone.now().date() - timedelta(days=1)
+            sales = sales.filter(created_at__date=yesterday_date)
+        
+        # Check if it's an amount (₦1000 or 1000)
+        elif '₦' in search_term or any(char.isdigit() for char in search_term):
+            try:
+                # Extract numbers from string
+                import re
+                numbers = re.findall(r'\d+\.?\d*', search_term)
+                if numbers:
+                    amount = float(numbers[0])
+                    # Search in total and amount_paid
+                    sales = sales.filter(
+                        Q(total=amount) | 
+                        Q(amount_paid=amount) |
+                        Q(total__gte=amount-0.01) & Q(total__lte=amount+0.01)
+                    )
+            except (ValueError, TypeError):
+                pass
+        
+        else:
+            # General search - check multiple fields
+            sales = sales.filter(
+                Q(invoice_number__icontains=search_term) |
+                Q(customer_name__icontains=search_term) |
+                Q(staff__username__icontains=search_term) |
+                Q(customer_phone__icontains=search_term)
+            )
+    
+    # Limit results and prefetch items
+    sales = sales[:20]
+    
+    # Prefetch items for each sale
+    sales_with_items = []
+    for sale in sales:
+        items = sale.items.all()
+        items_data = []
+        for item in items:
+            items_data.append({
+                'id': item.id,
+                'name': item.product_name,
+                'quantity': item.quantity,
+                'price': float(item.price),
+                'discount': float(item.discount),
+                'total': float(item.total),
+            })
+        
+        sales_with_items.append({
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name,
+            'customer_phone': sale.customer_phone,
+            'staff_name': sale.staff.username,
+            'staff_full_name': f"{sale.staff.first_name or ''} {sale.staff.last_name or ''}".strip(),
+            'total': float(sale.total),
+            'amount_paid': float(sale.amount_paid),
+            'balance': float(sale.balance),
+            'payment_status': sale.payment_status,
+            'created_at': sale.created_at.isoformat(),
+            'formatted_date': sale.created_at.strftime('%b %d, %I:%M %p'),
+            'items': items_data,
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'sales': sales_with_items,
+        'count': len(sales_with_items),
+        'search_term': search_term,
+    })
+
+@login_required
+def all_sales_api(request):
+    """Get all sales with pagination"""
+    page = int(request.GET.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+    
+    sales = Sale.objects.all().select_related('staff').order_by('-created_at')
+    
+    total_count = sales.count()
+    sales = sales[offset:offset + per_page]
+    
+    sales_data = []
+    for sale in sales:
+        sales_data.append({
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name,
+            'staff_name': sale.staff.username,
+            'total': float(sale.total),
+            'amount_paid': float(sale.amount_paid),
+            'balance': float(sale.balance),
+            'payment_status': sale.payment_status,
+            'created_at': sale.created_at.isoformat(),
+            'formatted_date': sale.created_at.strftime('%b %d, %Y %I:%M %p'),
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'sales': sales_data,
+        'count': len(sales_data),
+        'total_count': total_count,
+        'has_more': offset + len(sales_data) < total_count,
+        'page': page,
+    })
+
+@login_required
+def search_all_sales_api(request):
+    """Search all sales"""
+    search_term = request.GET.get('q', '').lower().strip()
+    page = int(request.GET.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+    
+    sales = Sale.objects.all().select_related('staff').order_by('-created_at')
+    
+    if search_term:
+        # Try different search strategies
+        if search_term.startswith('inv-'):
+            sales = sales.filter(invoice_number__icontains=search_term.upper())
+        elif search_term in ['today', 'now']:
+            today = timezone.now().date()
+            sales = sales.filter(created_at__date=today)
+        elif search_term == 'yesterday':
+            yesterday_date = timezone.now().date() - timedelta(days=1)
+            sales = sales.filter(created_at__date=yesterday_date)
+        elif search_term.startswith('₦') or search_term.replace('.', '').isdigit():
+            try:
+                amount = float(search_term.replace('₦', ''))
+                sales = sales.filter(Q(total=amount) | Q(amount_paid=amount))
+            except ValueError:
+                pass
+        else:
+            sales = sales.filter(
+                Q(invoice_number__icontains=search_term) |
+                Q(customer_name__icontains=search_term) |
+                Q(staff__username__icontains=search_term) |
+                Q(customer_phone__icontains=search_term)
+            )
+    
+    total_count = sales.count()
+    sales = sales[offset:offset + per_page]
+    
+    sales_data = []
+    for sale in sales:
+        sales_data.append({
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name,
+            'staff_name': sale.staff.username,
+            'total': float(sale.total),
+            'amount_paid': float(sale.amount_paid),
+            'balance': float(sale.balance),
+            'payment_status': sale.payment_status,
+            'created_at': sale.created_at.isoformat(),
+            'formatted_date': sale.created_at.strftime('%b %d, %Y %I:%M %p'),
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'sales': sales_data,
+        'count': len(sales_data),
+        'total_count': total_count,
+        'has_more': offset + len(sales_data) < total_count,
+        'page': page,
+    })
+
+@login_required
+def sale_details_api(request, pk):
+    """Get detailed information about a specific sale"""
+    try:
+        sale = Sale.objects.select_related('staff').prefetch_related('items').get(id=pk)
+        
+        items_data = []
+        for item in sale.items.all():
+            items_data.append({
+                'id': item.id,
+                'name': item.product_name,
+                'quantity': item.quantity,
+                'price': float(item.price),
+                'discount': float(item.discount),
+                'total': float(item.total),
+            })
+        
+        sale_data = {
+            'id': sale.id,
+            'invoice_number': sale.invoice_number,
+            'customer_name': sale.customer_name,
+            'customer_phone': sale.customer_phone,
+            'staff_name': sale.staff.username,
+            'staff_full_name': f"{sale.staff.first_name or ''} {sale.staff.last_name or ''}".strip(),
+            'total': float(sale.total),
+            'amount_paid': float(sale.amount_paid),
+            'balance': float(sale.balance),
+            'payment_status': sale.payment_status,
+            'created_at': sale.created_at.isoformat(),
+            'formatted_date': sale.created_at.strftime('%b %d, %Y %I:%M %p'),
+            'items': items_data,
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'sale': sale_data,
+        })
+        
+    except Sale.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Sale not found',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+        })
