@@ -183,8 +183,11 @@ async function performDebtorSearch() {
     const searchCount = document.getElementById('debtorSearchCount');
     
     if (!searchTerm) {
-        // Reload page without search
-        window.location.href = "{% url 'debtors_list' %}";
+        // Show all rows
+        document.querySelectorAll('#debtorTableBody tr').forEach(row => {
+            row.style.display = '';
+        });
+        searchCount.style.display = 'none';
         return;
     }
     
@@ -199,10 +202,32 @@ async function performDebtorSearch() {
         }
     } catch (error) {
         console.error('Search error:', error);
-        showModal('Search Error', 'An error occurred during search.', 'error');
-        // Fallback to page reload
-        window.location.href = "{% url 'debtors_list' %}?search=" + encodeURIComponent(searchTerm);
+        // Fallback to local search
+        performLocalDebtorSearch(searchTerm);
     }
+}
+
+function performLocalDebtorSearch(searchTerm) {
+    const searchLower = searchTerm.toLowerCase();
+    const rows = document.querySelectorAll('#debtorTableBody tr[data-sale-id]');
+    let foundCount = 0;
+    
+    rows.forEach(row => {
+        const invoice = row.querySelector('td:nth-child(1)').textContent.toLowerCase();
+        const customer = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        const phone = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+        
+        if (invoice.includes(searchLower) || 
+            customer.includes(searchLower) || 
+            phone.includes(searchLower)) {
+            row.style.display = '';
+            foundCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    updateDebtorSearchCount(foundCount, false);
 }
 
 function updateDebtorTable(results) {
@@ -232,36 +257,8 @@ function updateDebtorTable(results) {
             year: 'numeric'
         });
         
-        // Payment history HTML (if available)
-        let paymentHistory = '';
-        if (sale.payments && sale.payments.length > 0) {
-            let paymentRows = '';
-            sale.payments.forEach(payment => {
-                const paymentDate = new Date(payment.created_at);
-                paymentRows += `
-                    <small>
-                        ${paymentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} - 
-                        ₦${parseFloat(payment.amount).toFixed(2)} 
-                        (${payment.payment_method.charAt(0).toUpperCase() + payment.payment_method.slice(1)})
-                        ${payment.reference ? '- Ref: ' + payment.reference : ''}
-                    </small><br>
-                `;
-            });
-            
-            paymentHistory = `
-                <tr style="background: #f8f9fa;">
-                    <td colspan="8" style="padding-left: 3rem;">
-                        <div class="payment-history">
-                            <strong>Payment History:</strong><br>
-                            ${paymentRows}
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }
-        
         rowsHtml += `
-            <tr>
+            <tr data-sale-id="${sale.id}">
                 <td><strong>${sale.invoice_number}</strong></td>
                 <td>${sale.customer_name || 'Walk-in'}</td>
                 <td>${sale.customer_phone || '-'}</td>
@@ -270,30 +267,18 @@ function updateDebtorTable(results) {
                 <td><strong style="color: #dc3545;">₦${parseFloat(sale.balance).toFixed(2)}</strong></td>
                 <td>${formattedDate}</td>
                 <td>
-                    <a href="/debtors/payment/${sale.id}/" class="btn btn-success btn-sm">
-                        Record Payment
-                    </a>
-                    <a href="/receipt/${sale.id}/" class="btn btn-primary btn-sm">
-                        View
-                    </a>
-                </td>
-            </tr>
-            ${paymentHistory}
-        `;
-    });
-    
-    // Add warning row if limited to 50 results
-    if (results.length === 50) {
-        rowsHtml += `
-            <tr style="background: #fff3cd;">
-                <td colspan="8" style="text-align: center; padding: 0.75rem; color: #856404;">
-                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                        Showing first 50 results. Type more for better results.
+                    <div class="action-buttons">
+                        <a href="/debtors/payment/${sale.id}/" class="btn btn-success btn-sm">
+                            Record Payment
+                        </a>
+                        <a href="/receipt/${sale.id}/" class="btn btn-primary btn-sm">
+                            View
+                        </a>
                     </div>
                 </td>
             </tr>
         `;
-    }
+    });
     
     tableBody.innerHTML = rowsHtml;
 }
@@ -311,7 +296,6 @@ function updateDebtorSearchCount(count, limited = false) {
         searchCount.style.display = 'none';
     }
 }
-
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {

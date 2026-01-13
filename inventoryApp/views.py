@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.db.models import Q, Sum, F, Count, Subquery, OuterRef
@@ -57,36 +58,47 @@ def home(request):
     return render(request, 'home.html', context)
 
 @login_required
-def search_products(request):
-    """API endpoint for POS product search - FIXED"""
-    query = request.GET.get('q', '').strip()
+def search_products_api(request):
+    """API endpoint for real-time products search"""
+    search_term = request.GET.get('q', '').strip()
     
-    if query:
-        products = Product.objects.filter(
-            Q(name__icontains=query) |
-            Q(sku__icontains=query) |
-            Q(category__name__icontains=query) |
-            Q(description__icontains=query) |
-            Q(supplier__name__icontains=query)
-        ).order_by('name')[:20] 
-    else:
-        products = Product.objects.all().order_by('name')[:20]
+    products = Product.objects.all().select_related('category', 'supplier').order_by('name')
     
+    if search_term:
+        products = products.filter(
+            Q(name__icontains=search_term) |
+            Q(sku__icontains=search_term) |
+            Q(category__name__icontains=search_term) |
+            Q(supplier__name__icontains=search_term)
+        )[:50]
+    
+    # Serialize results
     results = []
     for product in products:
         results.append({
             'id': product.id,
             'name': product.name,
             'sku': product.sku,
+            'category': product.category.name if product.category else 'N/A',
+            'category_id': product.category.id if product.category else None,
+            'supplier': product.supplier.name if product.supplier else 'N/A',
+            'supplier_id': product.supplier.id if product.supplier else None,
+            'description': product.description or '',
             'price': float(product.price),
+            'cost_price': float(product.cost_price),
             'quantity': product.quantity,
-            'image': product.image.url if product.image else None,
-            'category': product.category.name if product.category else '',
+            'reorder_level': product.reorder_level,
+            'image': product.image.url if product.image else '',
+            'is_low_stock': product.is_low_stock,
+            'limited': products.count() >= 50
         })
     
-    return JsonResponse({'products': results})
-
-# In your views.py, update the process_sale function:
+    return JsonResponse({
+        'success': True,
+        'results': results,
+        'count': len(results),
+        'limited': len(results) >= 50
+    })
 
 @login_required
 @csrf_exempt
@@ -229,10 +241,9 @@ def process_sale(request):
             )
             
             # Dashboard notification for admin users
-            # FIX: Use your custom User model, not Django's default
-            from .models import User  # Import your custom User model
-            admins = User.objects.filter(role='admin') | User.objects.filter(is_superuser=True)
-            for admin in admins:
+            # FIXED: Use the custom User model imported at the top of the file
+            admins = User.objects.filter(Q(role='admin') | Q(is_superuser=True))
+            for admin in admins.distinct():
                 if admin != request.user:  # Don't notify the user who made the sale
                     UserNotification.create_notification(
                         user=admin,
@@ -440,12 +451,14 @@ def admin_dashboard(request):
         UserNotification.mark_as_read(request.user, 'dashboard')
     
     return render(request, 'admin_dashboard.html', context)
+
+
 # =================== PRODUCT VIEWS ===================
 @login_required
 def product_list(request):
     products = Product.objects.all().select_related('category', 'supplier').order_by('-created_at')
     
-    search_query = request.GET.get('search', '')
+    search_query = request.GET.get('search', '').strip()
     if search_query:
         products = products.filter(
             Q(name__icontains=search_query) |
@@ -454,6 +467,15 @@ def product_list(request):
             Q(description__icontains=search_query) |
             Q(supplier__name__icontains=search_query)
         )[:50]
+    
+    # Check if it's an AJAX request
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        # Return only the table body for AJAX requests
+        html = render_to_string('partials/product_table_body.html', {
+            'products': products,
+            'search_query': search_query,
+        })
+        return HttpResponse(html)
     
     categories = Category.objects.all()
     suppliers = Supplier.objects.all()
@@ -743,9 +765,9 @@ def record_payment(request, sale_id):
                 UserNotification.mark_as_read(request.user, 'debtors')
             
             # Create dashboard notification for admin users
-            from django.contrib.auth.models import User
-            admins = User.objects.filter(role='admin') | User.objects.filter(is_superuser=True)
-            for admin in admins:
+            # FIXED: Use the custom User model imported at the top
+            admins = User.objects.filter(Q(role='admin') | Q(is_superuser=True))
+            for admin in admins.distinct():
                 if admin != request.user:
                     UserNotification.create_notification(
                         user=admin,
@@ -1066,8 +1088,8 @@ def staff_list(request):
 @login_required
 @csrf_exempt
 def edit_staff(request):
-    """Handle AJAX request to edit staff member"""
-    if not request.user.role == 'admin' and not request.user.is_superuser:
+    """Handle AJAX request to edit staff member - Alternative approach"""
+    if not (request.user.role == 'admin' or request.user.is_superuser):
         return JsonResponse({'success': False, 'error': 'Only admins can edit staff'})
     
     if request.method == 'POST':
@@ -1075,39 +1097,53 @@ def edit_staff(request):
             user_id = request.POST.get('user_id')
             user = User.objects.get(id=user_id)
             
-            # Don't allow editing the currently logged-in user's role or status
-            if user == request.user:
-                return JsonResponse({'success': False, 'error': 'You cannot edit your own account through this interface'})
+            # Update fields individually without triggering full save
+            update_fields = []
             
-            # Update user fields
-            user.username = request.POST.get('username')
-            user.email = request.POST.get('email')
-            user.first_name = request.POST.get('first_name', '')
-            user.last_name = request.POST.get('last_name', '')
-            user.phone = request.POST.get('phone', '')
-            user.role = request.POST.get('role', 'staff')
+            # Track which fields changed
+            fields_to_update = ['username', 'email', 'first_name', 'last_name', 'phone', 'role', 'is_active']
             
-            # CRITICAL FIX: Ensure is_active is properly handled
-            is_active = request.POST.get('is_active')
-            if is_active is not None:
-                user.is_active = is_active == 'true'
-            else:
-                user.is_active = True
+            for field in fields_to_update:
+                if field == 'role':
+                    new_value = request.POST.get('role')
+                    if new_value and new_value != user.role:
+                        user.role = new_value
+                        update_fields.append('role')
+                elif field == 'is_active':
+                    is_active = request.POST.get('is_active')
+                    if is_active is not None:
+                        new_value = is_active == 'true'
+                        if new_value != user.is_active:
+                            user.is_active = new_value
+                            update_fields.append('is_active')
+                else:
+                    new_value = request.POST.get(field, getattr(user, field))
+                    if new_value != getattr(user, field):
+                        setattr(user, field, new_value)
+                        update_fields.append(field)
             
+            # Save only if fields changed
+            if update_fields:
+                user.save(update_fields=update_fields)
+            
+            # Handle password separately
             password = request.POST.get('password')
-            if password and password.strip(): 
+            if password and password.strip():
                 user.set_password(password)
-            
-            user.save()
+                user.save(update_fields=['password'])
+                
+                # Update session if changing own password
+                if user == request.user:
+                    from django.contrib.auth import update_session_auth_hash
+                    update_session_auth_hash(request, user)
             
             return JsonResponse({'success': True})
             
-        except User.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'User not found'})
         except Exception as e:
+            import traceback
+            print(f"Error editing staff: {str(e)}")
+            print(traceback.format_exc())
             return JsonResponse({'success': False, 'error': str(e)})
-    
-    return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
 @login_required
 @csrf_exempt
@@ -1335,7 +1371,6 @@ def create_refund_request(request):
             refund_request.save()
             
             # Create refund notification for admin users
-            from django.contrib.auth.models import User
             admins = User.objects.filter(Q(role='admin') | Q(is_superuser=True)).distinct()
             for admin in admins:
                 if admin != request.user:  # Don't notify yourself if you're an admin
@@ -1481,69 +1516,45 @@ def approve_refund_request(request, pk):
                 messages.error(request, 'This refund has already been processed')
                 return redirect('refund_requests_list')
             
-            # Find the related sale - prioritize the sale linked in the request
+            # Find the related sale
             sale = None
             if refund_request.sale:
                 sale = refund_request.sale
             else:
-                # Find sale by customer info - get the most recent one with sufficient paid amount
+                # Find sale by customer info
                 sales = Sale.objects.filter(
                     Q(customer_name__iexact=refund_request.customer_name) |
                     Q(customer_phone__iexact=refund_request.customer_phone)
-                ).filter(amount_paid__gte=refund_request.amount).order_by('-created_at')
+                ).order_by('-created_at')
                 
                 if not sales.exists():
-                    # Try without amount filter
-                    sales = Sale.objects.filter(
-                        Q(customer_name__iexact=refund_request.customer_name) |
-                        Q(customer_phone__iexact=refund_request.customer_phone)
-                    ).order_by('-created_at')
-                    
-                    if not sales.exists():
-                        messages.error(request, f'No matching sale found for customer: {refund_request.customer_name}')
-                        return redirect('refund_requests_list')
+                    messages.error(request, f'No matching sale found for customer: {refund_request.customer_name}')
+                    return redirect('refund_requests_list')
                 
                 sale = sales.first()
             
-            # Double-check if sale has sufficient amount paid
-            if sale.amount_paid < refund_request.amount:
-                messages.error(request, f'Sale has insufficient paid amount (₦{sale.amount_paid:,.2f}) for refund of ₦{refund_request.amount:,.2f}')
-                return redirect('refund_requests_list')
-            
-            # Create refund record - ALWAYS link to a sale
+            # Create refund record
             refund = Refund.objects.create(
                 sale=sale,
                 refund_request=refund_request,
                 amount=refund_request.amount,
                 reason=refund_request.reason,
-                payment_method='refund',  # Use 'refund' as payment method for tracking
+                payment_method='refund',
                 processed_by=request.user
             )
             
-            # IMPORTANT: Update the sale linked to the refund request
+            # Update refund request
             refund_request.sale = sale
-            refund_request.save()
-            
-            # Deduct from sale amount paid and update balance
-            sale.amount_paid -= refund_request.amount
-            sale.balance = sale.total - sale.amount_paid
-            
-            # Update payment status based on new balance
-            if sale.balance <= 0:
-                sale.payment_status = 'paid'
-            elif sale.balance < sale.total:
-                sale.payment_status = 'partial'
-            else:
-                sale.payment_status = 'unpaid'
-            
-            sale.save()
-            
-            # Mark refund request as approved and processed
             refund_request.status = 'approved'
             refund_request.approved_by = request.user
             refund_request.approved_date = timezone.now()
             refund_request.refund_processed = True
             refund_request.save()
+            
+            # FIX: Update sale amount paid WITHOUT creating debtor
+            # Simply reduce the amount_paid, don't touch the balance
+            sale.amount_paid -= refund_request.amount
+            sale.save()
             
             # If refund is for a specific item, adjust inventory
             if refund_request.sale_item:
@@ -1564,32 +1575,17 @@ def approve_refund_request(request, pk):
                         created_by=request.user
                     )
             
-            # Create a payment record for the refund (negative amount for revenue tracking)
+            # Create a payment record for the refund (negative amount)
             Payment.objects.create(
                 sale=sale,
-                amount=-refund_request.amount,  # Negative amount to deduct from revenue
+                amount=-refund_request.amount,
                 payment_method='refund',
                 reference=f"REFUND-{refund_request.id}",
                 notes=f"Refund processed: {refund_request.reason}",
                 created_by=request.user
             )
             
-            # Mark refund notifications as read for the user who approved
-            UserNotification.mark_as_read(request.user, 'refunds')
-            
-            # Create dashboard notification about the refund
-            from django.contrib.auth.models import User
-            admins = User.objects.filter(Q(role='admin') | Q(is_superuser=True)).distinct()
-            for admin in admins:
-                if admin != request.user:
-                    UserNotification.create_notification(
-                        user=admin,
-                        notification_type='dashboard',
-                        message=f'Refund approved by {request.user.username}: ₦{refund_request.amount:,.2f} for {refund_request.customer_name}',
-                        related_id=sale.id
-                    )
-            
-            messages.success(request, f'Refund of ₦{refund_request.amount:,.2f} processed successfully! Revenue has been updated.')
+            messages.success(request, f'Refund of ₦{refund_request.amount:,.2f} processed successfully!')
             
         except RefundRequest.DoesNotExist:
             messages.error(request, 'Refund request not found')

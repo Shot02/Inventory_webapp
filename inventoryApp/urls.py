@@ -54,7 +54,7 @@ urlpatterns = [
     
     # =================== SALES API ===================
     # POS API
-    path('api/search-products/', views.search_products, name='search_products'),
+    path('api/search-products/', views.search_products_api, name='search_products'),
     path('api/process-sale/', views.process_sale, name='process_sale'),
     
     

@@ -380,58 +380,37 @@
 <script>
 // Real-time search for sales history
 let salesHistoryDebounceTimer;
-let isSearching = false;
 
 function debounceSalesHistorySearch() {
     clearTimeout(salesHistoryDebounceTimer);
     salesHistoryDebounceTimer = setTimeout(() => {
         performSalesHistorySearch();
-    }, 500); // Increased debounce time for better performance
+    }, 300);
 }
 
 async function performSalesHistorySearch() {
-    if (isSearching) return;
-    
     const searchTerm = document.getElementById('salesSearchInput').value.trim();
-    const dateFrom = document.getElementById('dateFrom').value;
-    const dateTo = document.getElementById('dateTo').value;
+    const searchCount = document.getElementById('searchCount');
     
-    if (searchTerm === '' && !dateFrom && !dateTo) {
-        // If no filters, reload page
+    if (!searchTerm) {
+        // Reload page without search
         window.location.href = "{% url 'sale_history' %}";
         return;
     }
     
-    isSearching = true;
-    const searchCount = document.getElementById('searchCount');
-    
     try {
-        let url = `/api/sales-history/?`;
-        const params = new URLSearchParams();
-        
-        if (searchTerm) params.append('q', searchTerm);
-        if (dateFrom) params.append('date_from', dateFrom);
-        if (dateTo) params.append('date_to', dateTo);
-        
-        url += params.toString();
-        
-        const response = await fetch(url);
+        const searchUrl = `/api/sales-history/?q=${encodeURIComponent(searchTerm)}`;
+        const response = await fetch(searchUrl);
         const data = await response.json();
         
         if (data.success) {
             updateSalesHistoryTable(data.results);
-            updateSalesHistoryCount(data.count);
+            updateSalesHistoryCount(data.count, data.limited);
         }
     } catch (error) {
         console.error('Search error:', error);
-        // Fallback to page reload with filters
-        let redirectUrl = "{% url 'sale_history' %}?";
-        if (searchTerm) redirectUrl += `search=${encodeURIComponent(searchTerm)}&`;
-        if (dateFrom) redirectUrl += `date_from=${dateFrom}&`;
-        if (dateTo) redirectUrl += `date_to=${dateTo}`;
-        window.location.href = redirectUrl;
-    } finally {
-        isSearching = false;
+        // Fallback to page reload with search
+        window.location.href = "{% url 'sale_history' %}?search=" + encodeURIComponent(searchTerm);
     }
 }
 
@@ -445,7 +424,7 @@ function updateSalesHistoryTable(results) {
                     <div class="empty-state">
                         <div class="empty-state-icon">🔍</div>
                         <h3>No Results Found</h3>
-                        <p>No sales found matching your search criteria</p>
+                        <p>No sales found matching your search</p>
                     </div>
                 </td>
             </tr>
@@ -455,15 +434,6 @@ function updateSalesHistoryTable(results) {
     
     let rowsHtml = '';
     results.forEach(sale => {
-        const date = new Date(sale.created_at);
-        const formattedDate = sale.formatted_date || date.toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
         let statusBadge = '';
         if (sale.payment_status === 'paid') {
             statusBadge = '<span class="badge badge-success">Paid</span>';
@@ -473,9 +443,13 @@ function updateSalesHistoryTable(results) {
             statusBadge = '<span class="badge badge-danger">Unpaid</span>';
         }
         
-        const balanceHtml = sale.balance > 0 ? 
-            `<strong style="color: #dc3545;">₦${sale.balance.toFixed(2)}</strong>` : 
-            `₦${sale.balance.toFixed(2)}`;
+        const date = new Date(sale.created_at);
+        const formattedDate = date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit',
+            minute: '2-digit'
+        });
         
         rowsHtml += `
             <tr>
@@ -484,11 +458,15 @@ function updateSalesHistoryTable(results) {
                 <td>${sale.customer_name || 'Walk-in'}</td>
                 <td>${sale.customer_phone || '-'}</td>
                 <td>${sale.staff_name}</td>
-                <td>₦${sale.subtotal.toFixed(2)}</td>
-                <td>₦${sale.discount.toFixed(2)}</td>
-                <td><strong>₦${sale.total.toFixed(2)}</strong></td>
-                <td>₦${sale.amount_paid.toFixed(2)}</td>
-                <td>${balanceHtml}</td>
+                <td>₦${parseFloat(sale.subtotal).toFixed(2)}</td>
+                <td>₦${parseFloat(sale.discount).toFixed(2)}</td>
+                <td><strong>₦${parseFloat(sale.total).toFixed(2)}</strong></td>
+                <td>₦${parseFloat(sale.amount_paid).toFixed(2)}</td>
+                <td>
+                    ${sale.balance > 0 ? 
+                        `<strong style="color: #dc3545;">₦${parseFloat(sale.balance).toFixed(2)}</strong>` : 
+                        `₦${parseFloat(sale.balance).toFixed(2)}`}
+                </td>
                 <td>${statusBadge}</td>
                 <td>
                     <div class="action-buttons">
@@ -510,54 +488,23 @@ function updateSalesHistoryTable(results) {
     }
 }
 
-function updateSalesHistoryCount(count) {
+function updateSalesHistoryCount(count, limited = false) {
     const searchCount = document.getElementById('searchCount');
     
     if (count > 0) {
-        searchCount.innerHTML = `<small>${count} found</small>`;
+        let countText = `${count} sale${count !== 1 ? 's' : ''}`;
+        if (limited) countText += ' (50+)';
+        
+        searchCount.innerHTML = `<small>${countText}</small>`;
         searchCount.style.display = 'block';
     } else {
         searchCount.style.display = 'none';
     }
 }
 
-function applyDateFilter() {
-    const dateFrom = document.getElementById('dateFrom').value;
-    const dateTo = document.getElementById('dateTo').value;
-    const searchTerm = document.getElementById('salesSearchInput').value.trim();
-    
-    if (dateFrom && dateTo) {
-        // Convert dates for validation
-        const fromDate = new Date(dateFrom);
-        const toDate = new Date(dateTo);
-        
-        if (fromDate > toDate) {
-            
-            return;
-        }
-    }
-    
-    performSalesHistorySearch();
-}
-
-function clearDateFilter() {
-    document.getElementById('dateFrom').value = '';
-    document.getElementById('dateTo').value = '';
-    document.getElementById('salesSearchInput').value = '';
-    performSalesHistorySearch();
-}
-
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('salesSearchInput');
-    const dateFromInput = document.getElementById('dateFrom');
-    const dateToInput = document.getElementById('dateTo');
-    
-    // Set today as default for "To Date" if not set
-    if (!dateToInput.value) {
-        const today = new Date().toISOString().split('T')[0];
-        dateToInput.value = today;
-    }
     
     if (searchInput) {
         searchInput.addEventListener('input', debounceSalesHistorySearch);
@@ -567,33 +514,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.value = '';
                 debounceSalesHistorySearch();
             }
-            
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                performSalesHistorySearch();
-            }
         });
         
         // Focus on search input
         searchInput.focus();
-    }
-    
-    if (dateFromInput) {
-        dateFromInput.addEventListener('change', debounceSalesHistorySearch);
-    }
-    
-    if (dateToInput) {
-        dateToInput.addEventListener('change', debounceSalesHistorySearch);
-    }
-    
-    // Load any existing search parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const searchParam = urlParams.get('search');
-    const dateFromParam = urlParams.get('date_from');
-    const dateToParam = urlParams.get('date_to');
-    
-    if (searchParam || dateFromParam || dateToParam) {
-        performSalesHistorySearch();
+        
+        // If there's a search query in URL, update the input
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchParam = urlParams.get('search');
+        if (searchParam) {
+            searchInput.value = searchParam;
+            setTimeout(() => debounceSalesHistorySearch(), 100);
+        }
     }
 });
 </script>

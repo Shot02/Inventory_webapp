@@ -1,324 +1,176 @@
 {% extends 'base.html' %}
 
-{% block title %}Products{% endblock %}
+{% block title %}{{ saved_cart.cart_name }}{% endblock %}
 
 {% block content %}
-<style>
-    .search-container {
-        background: #fff;
-        padding: 1rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
-        margin-bottom: 1.5rem;
-    }
-
-    .search-input {
-        width: 100%;
-        padding: 0.75rem 1rem;
-        border: 2px solid #ddd;
-        border-radius: 8px;
-        font-size: 1rem;
-        transition: all 0.3s;
-    }
-    
-    .search-input:focus {
-        border-color: #4f46e5;
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-    }
-
-    .search-result-count {
-        position: absolute;
-        right: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: #4f46e5;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        border-radius: 12px;
-        font-size: 0.85rem;
-        font-weight: 600;
-    }
-    
-    .search-tips {
-        margin-top: 0.5rem;
-        font-size: 0.85rem;
-        color: #666;
-        padding: 0.5rem;
-        background: #f8f9fa;
-        border-radius: 6px;
-        border-left: 3px solid #4f46e5;
-    }
-    
-    .empty-state {
-        text-align: center;
-        padding: 3rem;
-        color: #666;
-    }
-    
-    .empty-state-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-        opacity: 0.5;
-    }
-    
-    .action-buttons {
-        display: flex;
-        gap: 0.5rem;
-        white-space: nowrap;
-    }
-</style>
-
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-    <h1>Product List</h1>
-    <a href="{% url 'add_product' %}" class="btn btn-primary">Add Product</a>
-</div>
-
-<!-- Search Bar -->
-<div class="search-container">
-    <div style="position: relative;">
-        <input type="text" 
-               class="search-input"
-               id="productSearchInput"
-               placeholder="Type to search products... (name, SKU, category)"
-               value="{{ search_query|default:'' }}"
-               autofocus>
-        <div id="productSearchCount" class="search-result-count" style="display: none;"></div>
+<div style="max-width: 800px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1>{{ saved_cart.cart_name }}</h1>
+        <div>
+            <button onclick="loadSavedCart({{ saved_cart.id }})" class="btn btn-success">
+                Load in POS
+            </button>
+            <a href="{% url 'saved_carts_list' %}" class="btn btn-primary">
+                Back to List
+            </a>
+        </div>
     </div>
     
-    <div class="search-tips">
-        <small>
-            <strong>Search:</strong> Type product name, SKU, category, or supplier
-        </small>
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-header">
+            <h3>Cart Details</h3>
+        </div>
+        <div style="padding: 1.5rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                    <strong>Customer Name:</strong> {{ cart_data.customer_name|default:"Not specified" }}
+                </div>
+                <div>
+                    <strong>Customer Phone:</strong> {{ cart_data.customer_phone|default:"Not specified" }}
+                </div>
+                <div>
+                    <strong>Payment Type:</strong> {{ cart_data.payment_type|default:"full"|title }}
+                </div>
+                <div>
+                    <strong>Payment Method:</strong> {{ cart_data.payment_method|default:"cash"|title }}
+                </div>
+                <div>
+                    <strong>Amount Paid:</strong> ₦{{ cart_data.amount_paid|default:"0.00"|floatformat:2 }}
+                </div>
+                <div>
+                    <strong>Saved On:</strong> {{ saved_cart.created_at|date:"M d, Y H:i" }}
+                </div>
+            </div>
+        </div>
     </div>
-</div>
-
-<div class="card">
-    <div style="overflow-x: auto;">
-        <table>
-            <thead>
-                <tr>
-                    <th>Image</th>
-                    <th>Name</th>
-                    <th>SKU</th>
-                    <th>Category</th>
-                    <th>Price</th>
-                    <th>Cost</th>
-                    <th>Stock</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="productTableBody">
-                {% for product in products %}
-                <tr>
-                    <td>
-                        {% if product.image %}
-                            <img src="{{ product.image.url }}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" alt="{{ product.name }}">
-                        {% else %}
-                            <div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px; color: #999;">
-                                none
-                            </div>
-                        {% endif %}
-                    </td>
-                    <td><strong>{{ product.name }}</strong></td>
-                    <td><code>{{ product.sku }}</code></td>
-                    <td>{{ product.category.name|default:"N/A" }}</td>
-                    <td>₦{{ product.price|floatformat:2 }}</td>
-                    <td>₦{{ product.cost_price|floatformat:2 }}</td>
-                    <td>{{ product.quantity }}</td>
-                    <td>
-                        {% if product.quantity == 0 %}
-                            <span class="badge badge-danger">Out of Stock</span>
-                        {% elif product.is_low_stock %}
-                            <span class="badge badge-warning">Low Stock</span>
-                        {% else %}
-                            <span class="badge badge-success">In Stock</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <div class="action-buttons">
-                            <a href="{% url 'edit_product' product.id %}" class="btn btn-primary btn-sm">
-                                Edit
-                            </a>
-                            <button onclick="deleteProduct({{ product.id }}, '{{ product.name|escapejs }}')" class="btn btn-danger btn-sm">
-                                Delete
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="9" style="text-align: center; padding: 2rem;">
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📦</div>
-                            <h3>No Products Found</h3>
-                            <p>
-                                {% if search_query %}
-                                No products found matching "{{ search_query }}"
-                                {% else %}
-                                No products yet. Click "Add Product" to get started.
-                                {% endif %}
-                            </p>
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3>Cart Items ({{ items_count }})</h3>
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Price</th>
+                        <th>Quantity</th>
+                        <th>Discount</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if cart_data.items %}
+                        {% for item in cart_data.items %}
+                        <tr>
+                            <td>{{ item.name }}</td>
+                            <td>₦{{ item.price|floatformat:2 }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>₦{{ item.discount|default:"0.00"|floatformat:2 }}</td>
+                            <td><strong>₦{{ item.total|default:item.price|floatformat:2 }}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 2rem;">
+                                <p style="color: #999;">No items in this cart</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if cart_data.items %}
+        <div style="background: #f8f9fa; padding: 1.5rem; border-top: 2px solid #e9ecef;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 1.2rem;">
+                    <strong>Cart Total:</strong>
+                </div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #667eea;">
+                    ₦{{ total_amount|floatformat:2 }}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <button onclick="loadSavedCart({{ saved_cart.id }})" class="btn btn-success" style="flex: 1;">
+            Load This Cart in POS
+        </button>
+        <button onclick="deleteSavedCart({{ saved_cart.id }}, '{{ saved_cart.cart_name|escapejs }}')" class="btn btn-danger">
+            Delete This Cart
+        </button>
     </div>
 </div>
 
 <script>
-// Real-time search for products
-let productDebounceTimer;
-
-function debounceProductSearch() {
-    clearTimeout(productDebounceTimer);
-    productDebounceTimer = setTimeout(() => {
-        performProductSearch();
-    }, 300);
-}
-
-async function performProductSearch() {
-    const searchTerm = document.getElementById('productSearchInput').value.trim();
-    const searchCount = document.getElementById('productSearchCount');
-    
-    if (!searchTerm) {
-        // Reload page without search
-        window.location.href = "{% url 'product_list' %}";
-        return;
-    }
-    
+async function loadSavedCart(cartId) {
     try {
-        const searchUrl = `/api/search/products/?q=${encodeURIComponent(searchTerm)}`;
-        const response = await fetch(searchUrl);
+        const response = await fetch(`/api/load-saved-cart/${cartId}/`);
         const data = await response.json();
         
         if (data.success) {
-            updateProductTable(data.results);
-            updateProductSearchCount(data.count, data.limited);
+            // Store cart data in sessionStorage for POS page to load
+            sessionStorage.setItem('cartToLoad', JSON.stringify({
+                name: data.cart_name,
+                data: data.cart_data,
+                saved_cart_id: cartId
+            }));
+            
+            // Show success message
+            alert(`Cart "${data.cart_name}" loaded successfully! Redirecting to POS...`);
+            
+            // Redirect to POS
+            window.location.href = "{% url 'home' %}";
+        } else {
+            alert('Failed to load cart: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
-        console.error('Search error:', error);
-        showModal('Search Error', 'An error occurred during search.', 'error');
-        // Fallback to page reload with search
-        window.location.href = "{% url 'product_list' %}?search=" + encodeURIComponent(searchTerm);
+        console.error('Load cart error:', error);
+        alert('Failed to load cart. Please check your connection.');
     }
 }
 
-function updateProductTable(results) {
-    const tableBody = document.getElementById('productTableBody');
-    
-    if (results.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="9" style="text-align: center; padding: 2rem;">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🔍</div>
-                        <h3>No Results Found</h3>
-                        <p>No products found matching your search</p>
-                    </div>
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    let rowsHtml = '';
-    results.forEach(product => {
-        let statusBadge;
-        if (product.quantity === 0) {
-            statusBadge = '<span class="badge badge-danger">Out of Stock</span>';
-        } else if (product.is_low_stock) {
-            statusBadge = '<span class="badge badge-warning">Low Stock</span>';
-        } else {
-            statusBadge = '<span class="badge badge-success">In Stock</span>';
-        }
-        
-        rowsHtml += `
-            <tr>
-                <td>
-                    ${product.image ? 
-                        `<img src="${product.image}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;">` : 
-                        `<div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px;">
-                            none
-                        </div>`}
-                </td>
-                <td><strong>${product.name}</strong></td>
-                <td><code>${product.sku}</code></td>
-                <td>${product.category || 'N/A'}</td>
-                <td>₦${parseFloat(product.price).toFixed(2)}</td>
-                <td>₦${parseFloat(product.cost_price).toFixed(2)}</td>
-                <td>${product.quantity}</td>
-                <td>${statusBadge}</td>
-                <td>
-                    <div class="action-buttons">
-                        <a href="/products/edit/${product.id}/" class="btn btn-primary btn-sm">Edit</a>
-                        <button onclick="deleteProduct(${product.id}, '${product.name.replace(/'/g, "\\'")}')" class="btn btn-danger btn-sm">
-                            Delete
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    });
-    
-    // Add warning row if limited to 50 results
-    if (results.length === 50) {
-        rowsHtml += `
-            <tr style="background: #fff3cd;">
-                <td colspan="9" style="text-align: center; padding: 0.75rem; color: #856404;">
-                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                        ⚠️ Showing first 50 results. Type more for better results.
-                    </div>
-                </td>
-            </tr>
-        `;
-    }
-    
-    tableBody.innerHTML = rowsHtml;
-}
-
-function updateProductSearchCount(count, limited = false) {
-    const searchCount = document.getElementById('productSearchCount');
-    
-    if (count > 0) {
-        let countText = `${count} product${count !== 1 ? 's' : ''}`;
-        if (limited) countText += ' (50+)';
-        
-        searchCount.innerHTML = `<small>${countText}</small>`;
-        searchCount.style.display = 'block';
-    } else {
-        searchCount.style.display = 'none';
-    }
-}
-
-// The deleteProduct function is already in base.html
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    const searchInput = document.getElementById('productSearchInput');
-    
-    if (searchInput) {
-        searchInput.addEventListener('input', debounceProductSearch);
-        
-        searchInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                this.value = '';
-                debounceProductSearch();
+async function deleteSavedCart(cartId, cartName) {
+    if (confirm(`Are you sure you want to delete "${cartName}"?`)) {
+        try {
+            const response = await fetch(`/api/delete-saved-cart/${cartId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Cart deleted successfully!');
+                window.location.href = "{% url 'saved_carts_list' %}";
+            } else {
+                alert('Failed to delete cart: ' + (data.error || 'Unknown error'));
             }
-        });
-        
-        // Focus on search input
-        searchInput.focus();
-        
-        // If there's a search query in URL, update the input
-        const urlParams = new URLSearchParams(window.location.search);
-        const searchParam = urlParams.get('search');
-        if (searchParam) {
-            searchInput.value = searchParam;
+        } catch (error) {
+            console.error('Delete cart error:', error);
+            alert('Failed to delete cart. Please check your connection.');
         }
     }
-});
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
 </script>
 {% endblock %}

@@ -802,12 +802,11 @@ function performStaffSearch() {
     const searchCount = document.getElementById('staffSearchCount');
     
     if (!searchTerm) {
-        searchCount.style.display = 'none';
-        
         // Show all rows
-        const rows = document.querySelectorAll('#staffTableBody tr');
-        rows.forEach(row => row.style.display = '');
-        
+        document.querySelectorAll('#staffTableBody tr[data-staff-id]').forEach(row => {
+            row.style.display = '';
+        });
+        searchCount.style.display = 'none';
         return;
     }
     
@@ -846,46 +845,6 @@ function performStaffSearch() {
     }
 }
 
-// Close modals when clicking outside
-document.getElementById('editStaffModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeEditStaffModal();
-    }
-});
-
-document.getElementById('deleteConfirmModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeDeleteModal();
-    }
-});
-
-// Close modals with Escape key
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        if (document.getElementById('editStaffModal').style.display === 'flex') {
-            closeEditStaffModal();
-        } else if (document.getElementById('deleteConfirmModal').style.display === 'flex') {
-            closeDeleteModal();
-        }
-    }
-});
-
-// CSRF token helper function
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('staffSearchInput');
@@ -897,11 +856,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.key === 'Escape') {
                 this.value = '';
                 debounceStaffSearch();
-            }
-            
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                performStaffSearch();
             }
         });
         

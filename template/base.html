@@ -1068,33 +1068,43 @@
         });
         
         // ========== SEARCH FUNCTIONALITY ==========
+        let searchDebounceTimers = {};
+
+        // Initialize real-time search for all pages
         function initializeRealTimeSearch() {
             const searchInputs = document.querySelectorAll('.search-input');
             
             searchInputs.forEach(input => {
-                let debounceTimer;
-                
                 input.addEventListener('input', function() {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(() => {
-                        performSearch(this);
+                    const pagePath = window.location.pathname;
+                    clearTimeout(searchDebounceTimers[this.id]);
+                    
+                    searchDebounceTimers[this.id] = setTimeout(() => {
+                        performEnhancedSearch(this);
                     }, 300);
                 });
                 
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Escape') {
                         this.value = '';
+                        this.dispatchEvent(new Event('input'));
                         location.reload();
+                    }
+                    if (e.key === 'Enter') {
+                        this.blur();
                     }
                 });
             });
         }
-        
-        async function performSearch(inputElement) {
+
+        // Enhanced search function
+        async function performEnhancedSearch(inputElement) {
             const searchTerm = inputElement.value.trim();
             const pagePath = window.location.pathname;
+            const inputId = inputElement.id;
             
             if (!searchTerm) {
+                // Clear search and reload if no term
                 location.reload();
                 return;
             }
@@ -1102,53 +1112,91 @@
             try {
                 let apiUrl = '';
                 let tableId = '';
+                let resultCountId = '';
                 
+                // Determine API endpoint based on current page
                 if (pagePath.includes('admin_dashboard')) {
-                    if (inputElement.id === 'salesSearchInput') {
+                    if (inputId === 'salesSearchInput') {
                         apiUrl = `/api/search/sales/?q=${encodeURIComponent(searchTerm)}`;
                         tableId = 'salesTableBody';
-                    } else if (inputElement.id === 'stockSearchInput') {
+                        resultCountId = 'salesSearchResultCount';
+                    } else if (inputId === 'stockSearchInput') {
                         apiUrl = `/api/search/stock/?q=${encodeURIComponent(searchTerm)}`;
                         tableId = 'stockTableBody';
+                        resultCountId = 'stockSearchResultCount';
                     }
                 } else if (pagePath.includes('products')) {
                     apiUrl = `/api/search/products/?q=${encodeURIComponent(searchTerm)}`;
                     tableId = 'productTableBody';
+                    resultCountId = 'productSearchCount';
                 } else if (pagePath.includes('staff')) {
                     apiUrl = `/api/search/staff/?q=${encodeURIComponent(searchTerm)}`;
                     tableId = 'staffTableBody';
+                    resultCountId = 'staffSearchCount';
                 } else if (pagePath.includes('debtors')) {
                     apiUrl = `/api/search/debtors/?q=${encodeURIComponent(searchTerm)}`;
                     tableId = 'debtorTableBody';
+                    resultCountId = 'debtorSearchCount';
                 } else if (pagePath.includes('sale_history')) {
                     apiUrl = `/api/sales-history/?q=${encodeURIComponent(searchTerm)}`;
                     tableId = 'salesTableBody';
+                    resultCountId = 'searchCount';
+                } else if (pagePath.includes('refund')) {
+                    // For refund requests, use the search function that's already working
+                    // We'll handle this in the refund-specific JavaScript
+                    return;
                 }
                 
                 if (!apiUrl) return;
+                
+                // Get date parameters for dashboard
+                const urlParams = new URLSearchParams(window.location.search);
+                const dateFilter = urlParams.get('date_filter') || '{{ date_filter|default:"today" }}';
+                const customStart = urlParams.get('custom_start');
+                const customEnd = urlParams.get('custom_end');
+                
+                // Add date parameters for dashboard search
+                if (pagePath.includes('admin_dashboard')) {
+                    apiUrl += `&date_filter=${dateFilter}`;
+                    if (customStart) apiUrl += `&custom_start=${customStart}`;
+                    if (customEnd) apiUrl += `&custom_end=${customEnd}`;
+                }
                 
                 const response = await fetch(apiUrl);
                 const data = await response.json();
                 
                 if (data.success) {
-                    updateTable(tableId, data.results, data.limited);
+                    updateSearchTable(tableId, data.results);
+                    updateSearchResultCount(resultCountId, data.count, data.limited);
                 }
                 
             } catch (error) {
                 console.error('Search error:', error);
                 showToast('Search error occurred', 'error');
+                
+                // Fallback to page reload with search
+                let redirectUrl = window.location.pathname + '?';
+                if (searchTerm) {
+                    redirectUrl += `search=${encodeURIComponent(searchTerm)}`;
+                }
+                window.location.href = redirectUrl;
             }
         }
-        
-        function updateTable(tableId, results, limited = false) {
+
+        // Update search table
+        function updateSearchTable(tableId, results) {
             const tableBody = document.getElementById(tableId);
             if (!tableBody) return;
             
             if (results.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="10" style="text-align: center; padding: 2rem;">
-                            No results found
+                        <td colspan="20" style="text-align: center; padding: 2rem;">
+                            <div style="color: #666; font-size: 1rem;">
+                                <div style="font-size: 2rem; margin-bottom: 1rem; opacity: 0.5;">🔍</div>
+                                <h4 style="margin: 0 0 0.5rem 0;">No Results Found</h4>
+                                <p style="margin: 0;">Try different search terms</p>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -1157,17 +1205,58 @@
             
             let rowsHtml = '';
             
-            if (tableId === 'salesTableBody') {
-                results.forEach(sale => {
-                    const date = new Date(sale.created_at);
-                    const formattedDate = date.toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric', 
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
+            if (tableId === 'productTableBody') {
+                results.forEach(product => {
+                    let statusBadge = '';
+                    if (product.quantity === 0) {
+                        statusBadge = '<span class="badge badge-danger">Out of Stock</span>';
+                    } else if (product.is_low_stock) {
+                        statusBadge = '<span class="badge badge-warning">Low Stock</span>';
+                    } else {
+                        statusBadge = '<span class="badge badge-success">In Stock</span>';
+                    }
                     
+                    rowsHtml += `
+                        <tr data-product-id="${product.id}"
+                            data-name="${product.name}"
+                            data-sku="${product.sku}"
+                            data-category-id="${product.category_id || ''}"
+                            data-category-name="${product.category || ''}"
+                            data-supplier-id="${product.supplier_id || ''}"
+                            data-supplier-name="${product.supplier || ''}"
+                            data-description="${product.description || ''}"
+                            data-price="${product.price}"
+                            data-cost-price="${product.cost_price}"
+                            data-quantity="${product.quantity}"
+                            data-reorder-level="${product.reorder_level || 10}"
+                            data-image-url="${product.image || ''}">
+                            <td>
+                                ${product.image ? 
+                                    `<img src="${product.image}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;">` : 
+                                    `<div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px;">
+                                        none
+                                    </div>`}
+                            </td>
+                            <td><strong>${product.name}</strong></td>
+                            <td><code>${product.sku}</code></td>
+                            <td>${product.category || 'N/A'}</td>
+                            <td>₦${parseFloat(product.price).toFixed(2)}</td>
+                            <td>₦${parseFloat(product.cost_price).toFixed(2)}</td>
+                            <td>${product.quantity}</td>
+                            <td>${statusBadge}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/products/edit/${product.id}/" class="btn btn-primary btn-sm">Edit</a>
+                                    <button onclick="deleteProduct(${product.id}, '${product.name.replace(/'/g, "\\'")}')" class="btn btn-danger btn-sm">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else if (tableId === 'salesTableBody') {
+                results.forEach(sale => {
                     let statusBadge = '';
                     if (sale.payment_status === 'paid') {
                         statusBadge = '<span class="badge badge-success">Paid</span>';
@@ -1184,7 +1273,7 @@
                             <td>${sale.staff_name}</td>
                             <td>₦${parseFloat(sale.total).toFixed(2)}</td>
                             <td>${statusBadge}</td>
-                            <td>${formattedDate}</td>
+                            <td>${new Date(sale.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                             <td>
                                 <a href="/receipt/${sale.id}/" class="btn btn-primary btn-sm">
                                     View
@@ -1193,20 +1282,87 @@
                         </tr>
                     `;
                 });
-            }
-            // ... other table update logic ...
-            
-            if (limited) {
-                rowsHtml += `
-                    <tr style="background: #fff3cd;">
-                        <td colspan="10" style="text-align: center; padding: 0.75rem; color: #856404;">
-                            ⚠️ Showing first 50 results. Use more specific search terms.
-                        </td>
-                    </tr>
-                `;
+            } else if (tableId === 'debtorTableBody') {
+                results.forEach(sale => {
+                    rowsHtml += `
+                        <tr>
+                            <td><strong>${sale.invoice_number}</strong></td>
+                            <td>${sale.customer_name || 'Walk-in'}</td>
+                            <td>${sale.customer_phone || '-'}</td>
+                            <td>₦${parseFloat(sale.total).toFixed(2)}</td>
+                            <td>₦${parseFloat(sale.amount_paid).toFixed(2)}</td>
+                            <td><strong style="color: #dc3545;">₦${parseFloat(sale.balance).toFixed(2)}</strong></td>
+                            <td>${new Date(sale.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/debtors/payment/${sale.id}/" class="btn btn-success btn-sm">
+                                        Record Payment
+                                    </a>
+                                    <a href="/receipt/${sale.id}/" class="btn btn-primary btn-sm">
+                                        View
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else if (tableId === 'staffTableBody') {
+                results.forEach(staff => {
+                    let roleClass = 'role-staff';
+                    if (staff.role === 'admin') roleClass = 'role-admin';
+                    if (staff.role === 'manager') roleClass = 'role-manager';
+                    
+                    rowsHtml += `
+                        <tr data-staff-id="${staff.id}">
+                            <td><strong>${staff.username}</strong></td>
+                            <td>${staff.first_name} ${staff.last_name}</td>
+                            <td>${staff.email}</td>
+                            <td>${staff.phone || '-'}</td>
+                            <td>
+                                <span class="role-badge ${roleClass}">
+                                    ${staff.role.charAt(0).toUpperCase() + staff.role.slice(1)}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="status-badge ${staff.is_active ? 'status-active' : 'status-inactive'}">
+                                    ${staff.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                            </td>
+                            <td>${new Date(staff.date_joined).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button onclick="openEditStaffModal(${staff.id})" class="btn btn-primary btn-sm">
+                                        Edit
+                                    </button>
+                                    ${staff.username !== '{{ request.user.username }}' ? 
+                                        `<button onclick="confirmDeleteStaff(${staff.id}, '${staff.username.replace(/'/g, "\\'")}')" class="btn btn-danger btn-sm">
+                                            Delete
+                                        </button>` : ''
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
             }
             
             tableBody.innerHTML = rowsHtml;
+        }
+
+        // Update search result count
+        function updateSearchResultCount(countElementId, count, limited = false) {
+            const countElement = document.getElementById(countElementId);
+            if (!countElement) return;
+            
+            if (count > 0) {
+                let countText = `${count} result${count !== 1 ? 's' : ''}`;
+                if (limited) countText += ' (50+)';
+                
+                countElement.innerHTML = `<small>${countText}</small>`;
+                countElement.style.display = 'block';
+            } else {
+                countElement.style.display = 'none';
+            }
         }
         
         function setupFormVisualFeedback() {

@@ -465,10 +465,6 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const cartData = JSON.parse(cartToLoad);
             loadCartData(cartData.data);
-            
-            // Show message that saved cart was loaded - KEEP THIS ONE
-            showModal('Saved Cart Loaded', `Cart "${cartData.name}" has been loaded. Complete the sale to remove it from saved carts.`, 'info');
-            
         } catch (error) {
             console.error('Error loading cart from storage:', error);
             sessionStorage.removeItem('cartToLoad');
@@ -502,7 +498,9 @@ async function searchProducts(query) {
     try {
         const response = await fetch(`/api/search-products/?q=${encodeURIComponent(query)}`);
         const data = await response.json();
-        const products = data.products || [];
+        
+        // CORRECTED: The API returns 'results' not 'products'
+        const products = data.results || [];
         
         const resultsDiv = document.getElementById('searchResults');
         
@@ -517,12 +515,13 @@ async function searchProducts(query) {
             const className = isOutOfStock ? 'search-result-item out-of-stock' : 'search-result-item';
             const onclick = isOutOfStock ? '' : `onclick='addToCart(${JSON.stringify(p)})'`;
             
+            // Use the correct field names from the API response
             return `
                 <div class="${className}" ${onclick}>
                     <img src="${p.image || '/static/placeholder.png'}" alt="${p.name}">
                     <div style="flex: 1;">
                         <strong>${p.name}</strong><br>
-                        <small>Price: ₦${p.price} | ${getStockBadge(p.quantity)}</small>
+                        <small>Price: ₦${p.price.toFixed(2)} | ${getStockBadge(p.quantity)}</small>
                         ${p.sku ? `<br><small style="color: #666;">SKU: ${p.sku}</small>` : ''}
                     </div>
                 </div>
@@ -986,19 +985,9 @@ async function processSale() {
             
             selectPaymentType('full');
             
-            // Show appropriate message
-            if (result.cart_deleted && savedCartName) {
-                showModal('Success', `Sale processed successfully!<br><br>Saved cart "${savedCartName}" has been automatically removed.`, 'success', function() {
-                    window.location.href = `/receipt/${result.sale_id}/`;
-                });
-            } else {
-                // REMOVED UNNECESSARY POPUP: Directly redirect to receipt
-                window.location.href = `/receipt/${result.sale_id}/`;
-            }
+            window.location.href = `/receipt/${result.sale_id}/`;
             
-        } else {
-            showModal('Error', 'Error processing sale: ' + (result.error || 'Unknown error'), 'error');
-        }
+        } 
     } catch (error) {
         console.error('Process sale error:', error);
         showModal('Network Error', 'Error processing sale. Please check your connection and try again.', 'error');

@@ -5,7 +5,7 @@
 {% block content %}
 <h1>Record Payment for Invoice {{ sale.invoice_number }}</h1>
 
-<div class="card">
+<div class="card" style="max-width: 600px; margin: 0 auto;">
     <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
         <p><strong>Customer:</strong> {{ sale.customer_name|default:"Walk-in" }}</p>
         <p><strong>Total Amount:</strong> ₦{{ sale.total|floatformat:2 }}</p>
@@ -20,17 +20,21 @@
         
         <div class="form-group">
             <label>Payment Amount *</label>
-            <input type="number" name="amount" class="form-control" 
-                   step="0.01" min="0.01" max="{{ sale.balance|floatformat:2 }}" 
-                   placeholder="Enter payment amount" required
-                   id="paymentAmount">
+            <div style="position: relative;">
+                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #666;">₦</span>
+                <input type="number" name="amount" class="form-control" 
+                       style="padding-left: 30px;"
+                       step="0.01" min="0.01" max="{{ sale.balance|floatformat:2 }}" 
+                       placeholder="Enter payment amount" required
+                       id="paymentAmount">
+            </div>
             <small style="color: #666;">Maximum: ₦{{ sale.balance|floatformat:2 }}</small>
             <small id="amountError" style="color: #dc3545; display: none;"></small>
         </div>
         
         <div class="form-group">
             <label>Payment Method *</label>
-            <select name="payment_method" class="form-control" required>
+            <select name="payment_method" class="form-control" required style="height: 45px;">
                 <option value="cash" selected>Cash</option>
                 <option value="transfer">Bank Transfer</option>
                 <option value="card">Card</option>
@@ -38,25 +42,40 @@
         </div>
         
         <div class="form-group">
-            <label>Reference Number</label>
+            <label>Reference Number (Optional)</label>
             <input type="text" name="reference" class="form-control" 
-                   placeholder="Optional reference number">
+                   placeholder="Enter reference number if any"
+                   style="height: 45px;">
         </div>
         
         <div class="form-group">
-            <label>Notes</label>
+            <label>Notes (Optional)</label>
             <textarea name="notes" class="form-control" rows="3" 
-                      placeholder="Optional notes about this payment"></textarea>
+                      placeholder="Optional notes about this payment"
+                      style="resize: vertical;"></textarea>
         </div>
         
-        <div style="display: flex; gap: 1rem;">
-            <button type="submit" class="btn btn-success" id="submitBtn">Record Payment</button>
-            <a href="{% url 'debtors_list' %}" class="btn btn-danger">Cancel</a>
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <button type="submit" class="btn btn-success" id="submitBtn" style="flex: 1; height: 45px; font-size: 1.1rem;">
+                Record Payment
+            </button>
+            <a href="{% url 'debtors_list' %}" class="btn btn-danger" style="height: 45px; padding: 0 1.5rem;">
+                Cancel
+            </a>
         </div>
     </form>
 </div>
 
 <style>
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-control {
+        height: 45px;
+        font-size: 1rem;
+    }
+    
     .error-message {
         color: #dc3545;
         font-size: 0.9rem;
@@ -80,6 +99,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Set focus on amount input
     amountInput.focus();
+    
+    // Set max value attribute
+    amountInput.max = maxAmount.toFixed(2);
     
     // Real-time validation
     amountInput.addEventListener('input', function() {
@@ -133,7 +155,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Disable button to prevent double submission
         submitBtn.disabled = true;
-        submitBtn.innerHTML = 'Processing...';
+        submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
         
     });
 });

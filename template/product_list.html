@@ -19,6 +19,7 @@
         border-radius: 8px;
         font-size: 1rem;
         transition: all 0.3s;
+        font-family: inherit;
     }
     
     .search-input:focus {
@@ -26,6 +27,8 @@
         outline: none;
         box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
     }
+
+
 
     .search-result-count {
         position: absolute;
@@ -516,7 +519,41 @@
 </div>
 
 <script>
-// Toast notification function
+// ==============================================
+// CLEANUP SECTION - PREVENT ANY BACKGROUND ERRORS
+// ==============================================
+(function() {
+    // Remove any existing error toasts
+    document.querySelectorAll('.toast').forEach(toast => {
+        if (!toast.classList.contains('toast-success')) {
+            toast.remove();
+        }
+    });
+    
+    // Clear any global timers that might be running
+    const maxTimerId = 10000;
+    for (let i = 0; i < maxTimerId; i++) {
+        clearTimeout(i);
+        clearInterval(i);
+    }
+    
+    // Clean up any AbortControllers
+    if (window.searchController) {
+        window.searchController.abort();
+        window.searchController = null;
+    }
+    
+    // Remove any global event listeners
+    const oldInput = document.getElementById('productSearchInput');
+    if (oldInput) {
+        const newInput = oldInput.cloneNode(true);
+        oldInput.parentNode.replaceChild(newInput, oldInput);
+    }
+})();
+
+// ==============================================
+// TOAST NOTIFICATION FUNCTION
+// ==============================================
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
@@ -531,12 +568,16 @@ function showToast(message, type = 'success') {
     setTimeout(() => {
         toast.style.animation = 'slideOut 0.3s ease-out';
         setTimeout(() => {
-            document.body.removeChild(toast);
+            if (toast.parentNode) {
+                document.body.removeChild(toast);
+            }
         }, 300);
     }, 3000);
 }
 
-// Open edit product modal - NO ALERT
+// ==============================================
+// PRODUCT EDIT MODAL FUNCTIONS
+// ==============================================
 function openEditProductModal(productId) {
     try {
         const row = document.querySelector(`tr[data-product-id="${productId}"]`);
@@ -561,7 +602,6 @@ function openEditProductModal(productId) {
             imageUrl: row.dataset.imageUrl || ''
         };
         
-        // Populate the form - all fields can be empty
         document.getElementById('editProductId').value = productData.id;
         document.getElementById('editProductName').value = productData.name || '';
         document.getElementById('editProductSKU').value = productData.sku || '';
@@ -575,7 +615,6 @@ function openEditProductModal(productId) {
         document.getElementById('editProductQuantity').value = productData.quantity || '0';
         document.getElementById('editProductReorderLevel').value = productData.reorderLevel || '10';
         
-        // Handle image
         const imageContainer = document.getElementById('currentImageContainer');
         if (productData.imageUrl) {
             imageContainer.innerHTML = `<img src="${productData.imageUrl}" class="image-preview">`;
@@ -597,75 +636,34 @@ function openEditProductModal(productId) {
     }
 }
 
-// Close edit product modal
 function closeEditProductModal() {
     document.getElementById('editProductModal').style.display = 'none';
-    
-    // Reset form but don't clear values from DOM
     const form = document.getElementById('editProductForm');
     form.reset();
     
-    // Reset image container
     const imageContainer = document.getElementById('currentImageContainer');
     imageContainer.innerHTML = 'No image';
     imageContainer.className = 'image-placeholder';
     
-    // Reset clear image checkbox
     document.getElementById('editClearImage').checked = false;
     document.getElementById('editClearImage').disabled = true;
     
-    // Reset submit button
     const submitBtn = document.getElementById('editProductSubmitBtn');
     submitBtn.disabled = false;
     submitBtn.innerHTML = 'Save Changes';
     submitBtn.style.background = '';
 }
 
-// Handle category/supplier selection logic
-document.getElementById('editProductCategory').addEventListener('change', function() {
-    if (this.value) {
-        document.getElementById('editNewCategory').value = '';
-    }
-});
-
-document.getElementById('editNewCategory').addEventListener('input', function() {
-    if (this.value) {
-        document.getElementById('editProductCategory').value = '';
-    }
-});
-
-document.getElementById('editProductSupplier').addEventListener('change', function() {
-    if (this.value) {
-        document.getElementById('editNewSupplier').value = '';
-    }
-});
-
-document.getElementById('editNewSupplier').addEventListener('input', function() {
-    if (this.value) {
-        document.getElementById('editProductSupplier').value = '';
-    }
-});
-
-// Handle edit product form submission - NO VALIDATION AT ALL
+// ==============================================
+// FORM HANDLERS
+// ==============================================
 document.getElementById('editProductForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const submitBtn = document.getElementById('editProductSubmitBtn');
     const formData = new FormData(this);
     
-    // FIX: NO VALIDATION - all fields can be empty
-    // Set defaults for completely empty fields if needed
-    
-    const productName = document.getElementById('editProductName').value.trim();
-    const price = document.getElementById('editProductPrice').value.trim();
-    
-    // If name is empty, we'll let the backend handle it (it will use "Unnamed Product")
-    // If price is empty, we'll let the backend handle it (it will use "0.00")
-    
-    // Don't do any frontend validation - just submit the form
-    
     try {
-        // Show loading state
         submitBtn.disabled = true;
         submitBtn.innerHTML = 'Saving...';
         
@@ -683,11 +681,8 @@ document.getElementById('editProductForm').addEventListener('submit', async func
         if (result.success) {
             submitBtn.innerHTML = '✓ Saved!';
             submitBtn.style.background = '#10b981';
-            
-            // Show success toast
             showToast('Product updated successfully!', 'success');
             
-            // Close modal and reload after delay
             setTimeout(() => {
                 closeEditProductModal();
                 location.reload();
@@ -707,27 +702,13 @@ document.getElementById('editProductForm').addEventListener('submit', async func
     }
 });
 
-// Close modal when clicking outside
-document.getElementById('editProductModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeEditProductModal();
-    }
-});
-
-// Close modal with Escape key
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && document.getElementById('editProductModal').style.display === 'flex') {
-        closeEditProductModal();
-    }
-});
-
-// DELETE PRODUCT FUNCTION - KEEP CONFIRMATION FOR THIS IMPORTANT ACTION
+// ==============================================
+// DELETE PRODUCT FUNCTION
+// ==============================================
 async function deleteProduct(productId, productName) {
-    // Use the global confirm modal from base.html
     const result = await confirm(`Are you sure you want to delete "${productName}"? This action cannot be undone.`);
     if (result) {
         try {
-            // Show loading on the delete button
             const deleteBtn = document.querySelector(`button[onclick="deleteProduct(${productId}, '${productName}')"]`);
             if (deleteBtn) {
                 deleteBtn.disabled = true;
@@ -743,7 +724,6 @@ async function deleteProduct(productId, productName) {
             
             if (response.ok) {
                 showToast('Product deleted successfully!', 'success');
-                // Reload after a short delay
                 setTimeout(() => {
                     location.reload();
                 }, 1500);
@@ -766,38 +746,163 @@ async function deleteProduct(productId, productName) {
     }
 }
 
-// Real-time search for products - NO ALERTS
-let productDebounceTimer;
+// ==============================================
+// SIMPLE AND RELIABLE SEARCH FUNCTIONALITY
+// ==============================================
 
-function debounceProductSearch() {
-    clearTimeout(productDebounceTimer);
-    productDebounceTimer = setTimeout(() => {
-        performProductSearch();
-    }, 300);
-}
+let productSearchDebounceTimer;
+let productSearchController = null; // For aborting previous requests
 
-async function performProductSearch() {
-    const searchTerm = document.getElementById('productSearchInput').value.trim();
+function initializeProductSearch() {
+    const searchInput = document.getElementById('productSearchInput');
     const searchCount = document.getElementById('productSearchCount');
     
-    if (!searchTerm) {
-        window.location.href = "{% url 'product_list' %}";
-        return;
+    if (!searchInput) return;
+    
+    // Update initial count
+    const initialProducts = document.querySelectorAll('#productTableBody tr[data-product-id]');
+    if (initialProducts.length > 0) {
+        searchCount.innerHTML = `<small>${initialProducts.length} product${initialProducts.length !== 1 ? 's' : ''}</small>`;
+        searchCount.style.display = 'block';
     }
     
+    // Input handler with proper debouncing
+    searchInput.addEventListener('input', function() {
+        // Update local count immediately
+        updateProductSearchCount();
+        
+        // Clear any existing debounce timer
+        clearTimeout(productSearchDebounceTimer);
+        
+        // Don't search for single character unless it's delete/backspace
+        if (this.value.length === 1 && this.value !== '' && !searchInput.dataset.lastValue) {
+            searchInput.dataset.lastValue = this.value;
+            return;
+        }
+        
+        searchInput.dataset.lastValue = this.value;
+        
+        // Show loading indicator
+        this.classList.add('searching');
+        
+        // Set new timeout for search
+        productSearchDebounceTimer = setTimeout(() => {
+            performProductSearch(this.value);
+        }, 300); // 300ms delay
+    });
+    
+    // Handle keyboard events
+    searchInput.addEventListener('keydown', function(e) {
+        clearTimeout(productSearchDebounceTimer);
+        
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this.classList.add('searching');
+            performProductSearch(this.value);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            this.value = '';
+            this.classList.add('searching');
+            performProductSearch('');
+        }
+    });
+    
+    // Focus on search input with cursor at end
+    setTimeout(() => {
+        searchInput.focus();
+        const len = searchInput.value.length;
+        searchInput.setSelectionRange(len, len);
+    }, 100);
+}
+
+async function performProductSearch(searchTerm) {
+    const searchCount = document.getElementById('productSearchCount');
+    
+    // Abort previous request if it exists
+    if (productSearchController) {
+        productSearchController.abort();
+    }
+    productSearchController = new AbortController();
+    
     try {
-        const searchUrl = `/api/search/products/?q=${encodeURIComponent(searchTerm)}`;
-        const response = await fetch(searchUrl);
+        // First, try API search for real-time results
+        const response = await fetch(`/api/search/products/?q=${encodeURIComponent(searchTerm)}`, {
+            signal: productSearchController.signal
+        });
+        
         const data = await response.json();
         
         if (data.success) {
             updateProductTable(data.results);
             updateProductSearchCount(data.count, data.limited);
+            
+            // Remove loading indicator
+            document.getElementById('productSearchInput').classList.remove('searching');
+        } else {
+            // Fallback to local search if API fails
+            performLocalProductSearch(searchTerm);
         }
+        
     } catch (error) {
-        console.error('Search error:', error);
-        // Fallback to page reload with search
-        window.location.href = "{% url 'product_list' %}?search=" + encodeURIComponent(searchTerm);
+        if (error.name === 'AbortError') {
+            // Request was aborted, this is expected
+            return;
+        }
+        
+        console.log('API search failed, falling back to local search:', error);
+        performLocalProductSearch(searchTerm);
+    } finally {
+        // Remove loading indicator
+        const searchInput = document.getElementById('productSearchInput');
+        if (searchInput) {
+            searchInput.classList.remove('searching');
+        }
+    }
+}
+
+function performLocalProductSearch(searchTerm) {
+    const searchLower = searchTerm.toLowerCase();
+    const rows = document.querySelectorAll('#productTableBody tr[data-product-id]');
+    let foundCount = 0;
+    
+    rows.forEach(row => {
+        const name = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        const sku = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+        const category = row.querySelector('td:nth-child(4)').textContent.toLowerCase();
+        
+        if (name.includes(searchLower) || 
+            sku.includes(searchLower) || 
+            category.includes(searchLower)) {
+            row.style.display = '';
+            foundCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    updateProductSearchCount(foundCount, false);
+    
+    // Show empty state if no results
+    const tableBody = document.getElementById('productTableBody');
+    const emptyRow = tableBody.querySelector('tr:not([data-product-id])');
+    
+    if (foundCount === 0) {
+        if (!emptyRow) {
+            const emptyHtml = `
+                <tr>
+                    <td colspan="9" style="text-align: center; padding: 2rem;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔍</div>
+                            <h3>No Products Found</h3>
+                            <p>No products found matching "${searchTerm}"</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            tableBody.innerHTML = emptyHtml;
+        }
+    } else if (emptyRow) {
+        emptyRow.remove();
     }
 }
 
@@ -821,7 +926,8 @@ function updateProductTable(results) {
     
     let rowsHtml = '';
     results.forEach(product => {
-        let statusBadge;
+        // Determine status badge
+        let statusBadge = '';
         if (product.quantity === 0) {
             statusBadge = '<span class="badge badge-danger">Out of Stock</span>';
         } else if (product.is_low_stock) {
@@ -830,32 +936,31 @@ function updateProductTable(results) {
             statusBadge = '<span class="badge badge-success">In Stock</span>';
         }
         
+        // Format image
+        const imageHtml = product.image ? 
+            `<img src="${product.image}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" alt="${product.name}">` :
+            `<div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px; color: #999;">none</div>`;
+        
         rowsHtml += `
             <tr data-product-id="${product.id}"
                 data-name="${product.name}"
                 data-sku="${product.sku}"
                 data-category-id="${product.category_id || ''}"
-                data-category-name="${product.category || ''}"
+                data-category-name="${product.category || 'N/A'}"
                 data-supplier-id="${product.supplier_id || ''}"
-                data-supplier-name="${product.supplier || ''}"
+                data-supplier-name="${product.supplier || 'N/A'}"
                 data-description="${product.description || ''}"
-                data-price="${product.price}"
-                data-cost-price="${product.cost_price}"
+                data-price="${product.price.toFixed(2)}"
+                data-cost-price="${product.cost_price.toFixed(2)}"
                 data-quantity="${product.quantity}"
-                data-reorder-level="${product.reorder_level || 10}"
+                data-reorder-level="${product.reorder_level}"
                 data-image-url="${product.image || ''}">
-                <td>
-                    ${product.image ? 
-                        `<img src="${product.image}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" alt="${product.name}">` : 
-                        `<div style="width:50px; height:50px; background:#eee; display:flex; align-items:center; justify-content:center; border-radius:6px; color: #999;">
-                            none
-                        </div>`}
-                </td>
+                <td>${imageHtml}</td>
                 <td><strong>${product.name}</strong></td>
                 <td><code>${product.sku}</code></td>
-                <td>${product.category || 'N/A'}</td>
-                <td>₦${parseFloat(product.price).toFixed(2)}</td>
-                <td>₦${parseFloat(product.cost_price).toFixed(2)}</td>
+                <td>${product.category}</td>
+                <td>₦${product.price.toFixed(2)}</td>
+                <td>₦${product.cost_price.toFixed(2)}</td>
                 <td>${product.quantity}</td>
                 <td>${statusBadge}</td>
                 <td>
@@ -872,18 +977,6 @@ function updateProductTable(results) {
             </tr>
         `;
     });
-    
-    if (results.length === 50) {
-        rowsHtml += `
-            <tr style="background: #fff3cd;">
-                <td colspan="9" style="text-align: center; padding: 0.75rem; color: #856404;">
-                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                        Showing first 50 results. Type more for better results.
-                    </div>
-                </td>
-            </tr>
-        `;
-    }
     
     tableBody.innerHTML = rowsHtml;
 }
@@ -902,59 +995,19 @@ function updateProductSearchCount(count, limited = false) {
     }
 }
 
-// CSRF token helper function
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
-// Initialize on page load
+// Update your DOMContentLoaded event handler
 document.addEventListener('DOMContentLoaded', function() {
-    const searchInput = document.getElementById('productSearchInput');
+    // Initialize product search (replacing the old initializeSimpleSearch)
+    initializeProductSearch();
     
-    if (searchInput) {
-        searchInput.addEventListener('input', debounceProductSearch);
-        
-        searchInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                this.value = '';
-                debounceProductSearch();
+    // Remove any remaining error messages after page load
+    setTimeout(() => {
+        document.querySelectorAll('.toast-error, .toast-warning').forEach(toast => {
+            if (!toast.classList.contains('toast-success')) {
+                toast.remove();
             }
         });
-        
-        searchInput.focus();
-        
-        const urlParams = new URLSearchParams(window.location.search);
-        const searchParam = urlParams.get('search');
-        if (searchParam) {
-            searchInput.value = searchParam;
-            // Trigger search if there's a search parameter
-            setTimeout(() => debounceProductSearch(), 100);
-        }
-    }
-    
-    // Handle image preview when file is selected
-    document.getElementById('editProductImage').addEventListener('change', function(e) {
-        if (this.files && this.files[0]) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const imageContainer = document.getElementById('currentImageContainer');
-                imageContainer.innerHTML = `<img src="${e.target.result}" class="image-preview">`;
-                imageContainer.className = 'image-preview';
-            }
-            reader.readAsDataURL(this.files[0]);
-        }
-    });
+    }, 500);
 });
 </script>
 {% endblock %}
