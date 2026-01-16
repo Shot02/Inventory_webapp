@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import MinValueValidator
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
 import uuid
 from django.contrib.auth.models import User
@@ -142,7 +142,69 @@ class Sale(models.Model):
     @property
     def items_count(self):
         return self.items.count() if hasattr(self, 'items') else 0
-
+    
+    def save(self, *args, **kwargs):
+        decimal_fields = ['subtotal', 'discount', 'total', 'amount_paid', 'balance']
+        
+        for field in decimal_fields:
+            value = getattr(self, field)
+            if not isinstance(value, Decimal):
+                try:
+                    # Convert to string first to avoid float precision issues
+                    setattr(self, field, Decimal(str(value)).quantize(
+                        Decimal('0.01'), rounding=ROUND_HALF_UP
+                    ))
+                except:
+                    setattr(self, field, Decimal('0.00'))
+        
+        # Calculate balance (this will be a Decimal)
+        self.balance = Decimal(str(self.total)) - Decimal(str(self.amount_paid))
+        
+        # Ensure balance is never negative
+        if self.balance < Decimal('0'):
+            self.balance = Decimal('0')
+        
+        # Update payment status
+        if self.balance <= Decimal('0'):
+            self.payment_status = 'paid'
+        elif self.balance < self.total:
+            self.payment_status = 'partial'
+        else:
+            self.payment_status = 'unpaid'
+            
+        super().save(*args, **kwargs)
+    
+    @property
+    def net_amount_paid(self):
+        """Calculate actual amount paid excluding refunds"""
+        from decimal import Decimal
+        from django.db.models import Q, Sum
+        
+        # Get all payments that are not refunds
+        non_refund_payments = self.payments.filter(
+            ~Q(payment_method='refund')
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
+        # Get refunds (these are negative amounts)
+        refunds = self.payments.filter(
+            payment_method='refund'
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
+        # Calculate net amount (positive payments minus refunds)
+        net_paid = non_refund_payments + refunds  # refunds are negative, so this subtracts them
+        
+        # Ensure it's not negative
+        if net_paid < Decimal('0'):
+            net_paid = Decimal('0')
+            
+        return net_paid
+    
+    @property
+    def is_real_debtor(self):
+        """Check if customer actually owes money after accounting for refunds"""
+        return self.net_amount_paid < self.total
+    
+    
 class SaleItem(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
@@ -315,6 +377,19 @@ class Refund(models.Model):
         elif self.refund_request:
             return self.refund_request.customer_name
         return "Unknown Customer"
+    
+    def save(self, *args, **kwargs):
+        # Ensure amount is properly rounded
+        if not isinstance(self.amount, Decimal):
+            self.amount = Decimal(str(self.amount)).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+        
+        # Don't allow negative refunds
+        if self.amount < Decimal('0'):
+            self.amount = Decimal('0')
+            
+        super().save(*args, **kwargs)
     
     def get_linked_sale(self):
         """Get the sale linked to this refund"""

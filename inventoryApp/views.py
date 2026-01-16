@@ -18,6 +18,24 @@ from .models import (
     Supplier, StockMovement, PendingCart, SavedCart, RefundRequest, Refund, UserNotification
 )
 
+
+
+def to_decimal(value, default='0.00'):
+    """Safely convert any value to Decimal with proper rounding"""
+    from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+    
+    try:
+        if isinstance(value, Decimal):
+            return value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        elif value is None:
+            return Decimal(default).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        else:
+            # Convert to string first to avoid float precision issues
+            return Decimal(str(value)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal(default).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    
+    
 # =================== AUTHENTICATION VIEWS ===================
 def login_view(request):
     if request.method == 'POST':
@@ -107,6 +125,9 @@ def process_sale(request):
         try:
             data = json.loads(request.body)
             
+            # Import Decimal here
+            from decimal import Decimal, ROUND_HALF_UP
+            
             # Get saved cart ID if exists
             saved_cart_id = data.get('saved_cart_id')
             saved_cart = None
@@ -121,26 +142,32 @@ def process_sale(request):
             if not data.get('items'):
                 return JsonResponse({'success': False, 'error': 'No items in cart'})
             
-            subtotal = sum(
-                Decimal(str(item['price'])) * Decimal(str(item['quantity']))
-                for item in data['items']
-            )
+            # Calculate with Decimal for precision
+            subtotal = Decimal('0')
+            for item in data['items']:
+                item_price = Decimal(str(item['price'])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                item_quantity = Decimal(str(item['quantity']))
+                item_discount = Decimal(str(item.get('discount', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                subtotal += (item_price * item_quantity) - item_discount
             
-            # Calculate total of all item discounts
-            item_discounts_total = sum(
-                Decimal(str(item.get('discount', 0)))
-                for item in data['items']
-            )
+            # Calculate total discount
+            item_discounts_total = Decimal('0')
+            for item in data['items']:
+                item_discounts_total += Decimal(str(item.get('discount', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             
             if 'discount' in data:
-                sale_discount = Decimal(str(data.get('discount', 0)))
+                sale_discount = Decimal(str(data.get('discount', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             else:
                 sale_discount = item_discounts_total
             
-            total = subtotal - sale_discount
+            total = (subtotal - sale_discount).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-            amount_paid = Decimal(str(data.get('amount_paid', 0)))
-            balance = total - amount_paid
+            amount_paid = Decimal(str(data.get('amount_paid', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            balance = (total - amount_paid).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            
+            # Ensure balance is not negative
+            if balance < Decimal('0'):
+                balance = Decimal('0')
             
             # Validate stock before processing
             for item in data['items']:
@@ -159,59 +186,62 @@ def process_sale(request):
             invoice_number = f"INV-{today_str}-{uuid.uuid4().hex[:6].upper()}"
             
             # Determine payment status
-            if balance <= 0:
+            if balance <= Decimal('0'):
                 payment_status = 'paid'
             elif balance < total:
                 payment_status = 'partial'
             else:
                 payment_status = 'unpaid'
             
-            # Create sale - store the sale-level discount
+            # Create sale with Decimal values
             sale = Sale.objects.create(
                 invoice_number=invoice_number,
                 staff=request.user,
                 customer_name=data.get('customer_name', ''),
                 customer_phone=data.get('customer_phone', ''),
                 subtotal=subtotal,
-                discount=sale_discount,  
+                discount=sale_discount,
                 total=total,
                 amount_paid=amount_paid,
                 balance=balance,
                 payment_status=payment_status
             )
             
-            # Create sale items
+            # Create sale items with Decimal values
             for item in data.get('items', []):
                 product = Product.objects.get(id=item['product_id'])
-
-                item_total = (Decimal(str(item['price'])) * Decimal(str(item['quantity']))) - Decimal(str(item.get('discount', 0)))
+                
+                item_price = Decimal(str(item['price'])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                item_quantity = int(item['quantity'])
+                item_discount = Decimal(str(item.get('discount', 0))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                item_total = (item_price * Decimal(str(item_quantity))) - item_discount
                 
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
                     product_name=product.name,
-                    quantity=item['quantity'],
-                    price=item['price'],
-                    discount=item.get('discount', 0), 
+                    quantity=item_quantity,
+                    price=item_price,
+                    discount=item_discount,
                     total=item_total
                 )
                 
                 # Update product quantity
-                product.quantity -= item['quantity']
+                product.quantity -= item_quantity
                 product.save()
                 
                 # Create stock movement record
                 StockMovement.objects.create(
                     product=product,
                     movement_type='out',
-                    quantity=item['quantity'],
+                    quantity=item_quantity,
                     reference=invoice_number,
                     notes=f"Sold in invoice {invoice_number}",
                     created_by=request.user
                 )
             
             # Create payment record if payment made
-            if amount_paid > 0:
+            if amount_paid > Decimal('0'):
                 Payment.objects.create(
                     sale=sale,
                     amount=amount_paid,
@@ -231,8 +261,7 @@ def process_sale(request):
             else:
                 cart_deleted = False
             
-            # Create notifications after successful sale
-            # Sales notification for the user who made the sale
+            # Create notifications
             UserNotification.create_notification(
                 user=request.user,
                 notification_type='sales',
@@ -240,11 +269,9 @@ def process_sale(request):
                 related_id=sale.id
             )
             
-            # Dashboard notification for admin users
-            # FIXED: Use the custom User model imported at the top of the file
             admins = User.objects.filter(Q(role='admin') | Q(is_superuser=True))
             for admin in admins.distinct():
-                if admin != request.user:  # Don't notify the user who made the sale
+                if admin != request.user:
                     UserNotification.create_notification(
                         user=admin,
                         notification_type='dashboard',
@@ -264,8 +291,7 @@ def process_sale(request):
             
         except Exception as e:
             import traceback
-            print(f"Error processing sale: {str(e)}")
-            print(traceback.format_exc())
+            traceback.print_exc()
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
@@ -695,22 +721,46 @@ def delete_product(request, pk):
 # =================== DEBTORS VIEWS ===================
 @login_required
 def debtors_list(request):
-    debtors = Sale.objects.filter(balance__gt=0).select_related('staff').prefetch_related('payments').order_by('-created_at')
+    """List of REAL debtors - excludes cases where refunds were processed"""
+    from decimal import Decimal
+    
+    # Get all sales with balance > 0
+    all_sales = Sale.objects.filter(balance__gt=0).select_related('staff').prefetch_related('payments').order_by('-created_at')
+    
+    real_debtors = []
+    for sale in all_sales:
+        non_refund_payments = sale.payments.filter(
+            ~Q(payment_method='refund')
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
+        refunds = sale.payments.filter(
+            payment_method='refund'
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
+        net_paid = non_refund_payments + refunds 
+        
+        if net_paid < sale.total:
+            real_debtors.append(sale)
     
     search_query = request.GET.get('search', '')
     if search_query:
-        debtors = debtors.filter(
-            Q(invoice_number__icontains=search_query) |
-            Q(customer_name__icontains=search_query) |
-            Q(customer_phone__icontains=search_query) |
-            Q(staff__username__icontains=search_query)
-        )[:50]
+        # Filter within real debtors
+        filtered_debtors = []
+        for debtor in real_debtors:
+            if (search_query.lower() in debtor.invoice_number.lower() or
+                search_query.lower() in (debtor.customer_name or '').lower() or
+                search_query.lower() in (debtor.customer_phone or '').lower() or
+                search_query.lower() in debtor.staff.username.lower()):
+                filtered_debtors.append(debtor)
+        real_debtors = filtered_debtors[:50]  # Limit results
     
     context = {
-        'debtors': debtors,
+        'debtors': real_debtors,
         'search_query': search_query,
     }
     return render(request, 'debtors_list.html', context)
+
+
 
 @login_required
 def record_payment(request, sale_id):
@@ -1499,7 +1549,7 @@ def edit_refund_request(request, pk):
 @login_required
 @csrf_exempt
 def approve_refund_request(request, pk):
-    """Approve and process refund request - Update revenue calculations"""
+    """Approve and process refund request - FIXED VERSION"""
     if request.method == 'POST':
         try:
             if not (request.user.role == 'admin' or request.user.is_superuser):
@@ -1516,28 +1566,60 @@ def approve_refund_request(request, pk):
                 messages.error(request, 'This refund has already been processed')
                 return redirect('refund_requests_list')
             
-            # Find the related sale
-            sale = None
-            if refund_request.sale:
-                sale = refund_request.sale
-            else:
+            # Import Decimal here
+            from decimal import Decimal, ROUND_HALF_UP
+            
+            # Get sale - try refund_request.sale first, then find by customer
+            sale = refund_request.sale
+            if not sale:
                 # Find sale by customer info
                 sales = Sale.objects.filter(
                     Q(customer_name__iexact=refund_request.customer_name) |
                     Q(customer_phone__iexact=refund_request.customer_phone)
                 ).order_by('-created_at')
                 
-                if not sales.exists():
-                    messages.error(request, f'No matching sale found for customer: {refund_request.customer_name}')
-                    return redirect('refund_requests_list')
-                
-                sale = sales.first()
+                if sales.exists():
+                    sale = sales.first()
+            
+            if not sale:
+                messages.error(request, 'No sale found for this refund request')
+                return redirect('refund_requests_list')
+            
+            # Convert amount to Decimal with proper precision
+            refund_amount = Decimal(str(refund_request.amount)).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+            
+            # Check if refund amount is valid
+            if refund_amount <= Decimal('0'):
+                messages.error(request, 'Refund amount must be greater than 0')
+                return redirect('refund_requests_list')
+            
+            # IMPORTANT: Check against what was actually paid (not affected by previous refunds)
+            # We need to check the original amount paid before any refunds
+            original_payments_total = sale.payments.filter(
+                ~Q(payment_method='refund')
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            
+            # Get total refunds already processed
+            existing_refunds_total = abs(sale.payments.filter(
+                payment_method='refund'
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00'))
+            
+            # Calculate maximum refundable amount
+            max_refundable = original_payments_total - existing_refunds_total
+            
+            if refund_amount > max_refundable:
+                messages.error(request, 
+                    f'Refund amount (₦{refund_amount:,.2f}) exceeds available amount (₦{max_refundable:,.2f})'
+                )
+                return redirect('refund_requests_list')
             
             # Create refund record
             refund = Refund.objects.create(
                 sale=sale,
                 refund_request=refund_request,
-                amount=refund_request.amount,
+                amount=refund_amount,
                 reason=refund_request.reason,
                 payment_method='refund',
                 processed_by=request.user
@@ -1551,45 +1633,56 @@ def approve_refund_request(request, pk):
             refund_request.refund_processed = True
             refund_request.save()
             
-            # FIX: Update sale amount paid WITHOUT creating debtor
-            # Simply reduce the amount_paid, don't touch the balance
-            sale.amount_paid -= refund_request.amount
-            sale.save()
-            
-            # If refund is for a specific item, adjust inventory
-            if refund_request.sale_item:
-                item = refund_request.sale_item
-                if item.product:
-                    product = item.product
-                    # Return quantity to inventory
-                    product.quantity += item.quantity
-                    product.save()
-                    
-                    # Record stock movement
-                    StockMovement.objects.create(
-                        product=product,
-                        movement_type='in',
-                        quantity=item.quantity,
-                        reference=f"REFUND-{refund_request.id}",
-                        notes=f"Refund for {sale.invoice_number} - {refund_request.reason}",
-                        created_by=request.user
-                    )
-            
-            # Create a payment record for the refund (negative amount)
+            # CRITICAL PART: Create payment record for the refund
             Payment.objects.create(
                 sale=sale,
-                amount=-refund_request.amount,
+                amount=-refund_amount,  # Negative amount for refund
                 payment_method='refund',
                 reference=f"REFUND-{refund_request.id}",
                 notes=f"Refund processed: {refund_request.reason}",
                 created_by=request.user
             )
             
-            messages.success(request, f'Refund of ₦{refund_request.amount:,.2f} processed successfully!')
+            # The Sale model's save() method will automatically recalculate
+            # amount_paid and balance when we access it next time
+            
+            # If refund is for a specific item, adjust inventory
+            if refund_request.sale_item and refund_request.sale_item.product:
+                item = refund_request.sale_item
+                product = item.product
+                
+                # Calculate proportion of quantity to refund
+                if item.total > Decimal('0'):
+                    refund_proportion = refund_amount / item.total
+                    quantity_to_return = int(round(float(item.quantity) * float(refund_proportion)))
+                    
+                    if quantity_to_return > 0:
+                        product.quantity += quantity_to_return
+                        product.save()
+                        
+                        # Record stock movement
+                        StockMovement.objects.create(
+                            product=product,
+                            movement_type='in',
+                            quantity=quantity_to_return,
+                            reference=f"REFUND-{refund_request.id}",
+                            notes=f"Partial refund for {sale.invoice_number}",
+                            created_by=request.user
+                        )
+            
+            messages.success(request, f'Refund of ₦{refund_amount:,.2f} processed successfully!')
+            
+            # Clear the refund notifications
+            if request.user.is_authenticated:
+                UserNotification.mark_as_read(request.user, 'refunds')
+            
+            return redirect('refund_requests_list')
             
         except RefundRequest.DoesNotExist:
             messages.error(request, 'Refund request not found')
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             messages.error(request, f'Error processing refund: {str(e)}')
     
     return redirect('refund_requests_list')
